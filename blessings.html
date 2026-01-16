@@ -1,0 +1,1154 @@
+<!doctype html>
+<html lang="en" data-bs-theme="dark">
+<head>
+  <meta charset="utf-8" />
+  <title>Blessing Tracker • Tidal Faction</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#0ea5e9" />
+  <link rel="icon" href="https://www.tidalfaction.com/tidal.png" />
+
+  <!-- Bootstrap 5.3 -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+
+  <!-- Inter (optional, for consistency with other pages) -->
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+
+  <style>
+    body{ background:#0d1117; font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol"; }
+    :root{
+      --bs-primary:#0ea5e9;
+      --bs-primary-rgb:14,165,233;
+    }
+    .navbar{ border-bottom:1px solid rgba(255,255,255,.08); }
+    .hero-icon{
+      width:40px;height:40px;border-radius:.75rem;display:inline-flex;align-items:center;justify-content:center;
+      background:rgba(255,255,255,.06); border:1px solid rgba(255,255,255,.08); font-size:1.25rem;
+    }
+    .card{ border-color:rgba(255,255,255,.08); transition:transform .15s ease, box-shadow .15s ease; }
+    .card:hover{ transform:translateY(-1px); box-shadow:0 .5rem 1rem rgba(0,0,0,.25); }
+    .progress{ height:.5rem; background:rgba(255,255,255,.06); }
+    .progress-bar{ background:rgba(var(--bs-primary-rgb),1); }
+    /* Blessing grid */
+    .blessings{ display:grid; grid-template-columns: repeat(auto-fill, minmax(56px,1fr)); gap:.5rem; }
+    .blessing{
+      font-size:26px; width:56px;height:56px; display:flex; align-items:center; justify-content:center;
+      border-radius:.75rem; background:rgba(255,255,255,.06); border:1px solid rgba(255,255,255,.12);
+      position:relative; cursor:pointer; transition:transform .15s ease, box-shadow .15s ease, border-color .15s ease;
+      user-select:none;
+    }
+    .blessing.owned {
+      background: linear-gradient(135deg, var(--success-color) 0%, #1fe06f 100%);
+      color: #fff;
+      opacity: 1;
+      border-color: #6bffa9;
+      /* stronger glow ring + outer glow */
+      box-shadow:
+        0 0 0 2px rgba(107, 255, 169, 0.55),
+        0 14px 34px rgba(63, 255, 150, 0.45);
+    }
+
+    .blessing.owned:hover {
+      transform: scale(1.15) translateY(-6px);
+      box-shadow:
+        0 0 0 3px rgba(107, 255, 169, 0.75),
+        0 18px 40px rgba(63, 255, 150, 0.5);
+      filter: saturate(1.1) brightness(1.05);
+    }
+    .blessing.in-inventory{
+      background:linear-gradient(180deg, rgba(245,158,11,.2), rgba(245,158,11,.08));
+      border-color:rgba(245,158,11,.6);
+    }
+    .blessing-counter{
+      position:absolute; bottom:-6px; right:-6px; font-size:10px; font-weight:700;
+      background:rgba(var(--bs-primary-rgb),1); color:#fff; border-radius:.5rem; padding:.15rem .35rem;
+      border:2px solid #0d1117;
+    }
+    .blessing::after{
+      content:attr(data-name); position:absolute; bottom:-22px; left:50%; transform:translateX(-50%);
+      font-size:10px; color:#8b949e; white-space:nowrap; opacity:0; transition:opacity .15s ease, bottom .15s ease;
+      pointer-events:none;
+    }
+    .blessing:hover::after{ opacity:1; bottom:-24px; }
+    /* Inventory list items */
+    .blessing-card{
+      background:rgba(255,255,255,.06); border:1px solid rgba(255,255,255,.12); border-radius:.5rem;
+      padding:.5rem .75rem; display:flex; align-items:center; justify-content:space-between;
+      transition:transform .15s ease, background .15s ease, border-color .15s ease;
+    }
+    .blessing-card:hover{ transform:translateX(3px); background:rgba(255,255,255,.08); border-color:rgba(255,255,255,.2); }
+    /* Tiny toast-style notification */
+    .notice{
+      position:fixed; top:1rem; right:1rem; z-index:1055; color:#fff; border-radius:.5rem; padding:.75rem 1rem;
+      box-shadow:0 .5rem 1rem rgba(0,0,0,.35); transition:opacity .3s ease, transform .3s ease;
+    }
+  </style>
+</head>
+<body>
+  <!-- Top bar -->
+  <nav class="navbar bg-body-tertiary">
+    <div class="container-xxl">
+      <a class="navbar-brand d-flex align-items-center gap-2" href="/">
+        <img src="https://tidalfaction.com/tidal.png" width="28" height="28" class="rounded" alt="Tidal Faction">
+        <span class="fw-semibold">Tidal Faction</span>
+      </a>
+      <div class="d-none d-sm-flex align-items-center small text-body-secondary">
+        Blessing Tracker
+      </div>
+    </div>
+  </nav>
+
+  <main class="container-xxl py-4">
+    <!-- Back -->
+    <div class="mb-3">
+      <a href="/" class="btn btn-outline-secondary">
+        ← Back to Home
+      </a>
+    </div>
+
+    <!-- Header -->
+    <header class="d-flex align-items-center gap-3 mb-4">
+      <div class="hero-icon">✨</div>
+      <div>
+        <h1 class="h3 fw-bold mb-1">Blessing Tracker</h1>
+        <p class="text-body-secondary mb-0">Track your blessing cards and overall progress.</p>
+      </div>
+    </header>
+
+    <div class="row g-3">
+      <!-- Sidebar -->
+      <aside class="col-12 col-lg-4">
+        <div class="card mb-3">
+          <div class="card-body">
+            <div class="d-flex align-items-center justify-content-between mb-2">
+              <h2 class="h6 fw-semibold mb-0">API Configuration</h2>
+              <button id="toggleConfigBtn" class="btn btn-sm btn-outline-secondary" type="button" onclick="toggleConfig()">Hide</button>
+            </div>
+            <div id="configContent">
+              <div class="mb-2">
+                <label for="userIdInput" class="form-label small text-body-secondary">User ID</label>
+                <input id="userIdInput" type="text" class="form-control" placeholder="Enter your User ID">
+              </div>
+              <div>
+                <label for="pkeyInput" class="form-label small text-body-secondary">API Key (Private)</label>
+                <input id="pkeyInput" type="password" class="form-control" placeholder="Enter your API Key">
+              </div>
+              <button class="btn btn-primary w-100 mt-3" onclick="saveAndLoad()">💾 Save & Load</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="card mb-3">
+          <div class="card-body">
+            <h2 class="h6 fw-semibold mb-3">Search Blessings</h2>
+            <div class="position-relative">
+              <input id="searchInput" type="text" class="form-control" placeholder="Search by name or emoji…">
+              <button id="clearSearch" class="btn btn-sm btn-outline-secondary position-absolute top-50 end-0 translate-middle-y me-2" style="display:none" onclick="clearSearch()">Clear</button>
+            </div>
+            <div id="searchResults" class="mt-2" style="display:none; max-height:240px; overflow:auto;"></div>
+          </div>
+        </div>
+
+        <div class="d-grid">
+          <button id="reloadButton" class="btn btn-success" onclick="getData()">🔄 Refresh Blessings</button>
+        </div>
+      </aside>
+
+      <!-- Main content -->
+      <section class="col-12 col-lg-8">
+        <div class="card mb-3">
+          <div class="card-body">
+            <div id="blessingsContainer" class="text-center py-5 text-body-secondary">Loading blessings…</div>
+          </div>
+        </div>
+
+        <div class="card mb-3">
+          <div class="card-body">
+            <h2 class="h6 fw-semibold mb-3">📦 Blessing Cards in Inventory</h2>
+            <div id="blessingCardsList" class="text-body-secondary">Loading…</div>
+          </div>
+        </div>
+
+        <div id="errorWindow" class="alert alert-danger d-none" role="alert">
+          <h6 class="alert-heading mb-1">⚠️ Error</h6>
+          <div id="errorMessage" class="small"></div>
+        </div>
+      </section>
+    </div>
+
+    <!-- Footer -->
+    <footer class="mt-4 pt-3 border-top border-opacity-25">
+      <div class="d-flex flex-wrap align-items-center justify-content-between gap-2">
+        <nav class="nav gap-3 small">
+          <a class="nav-link px-0 text-body-secondary" href="/">Home</a>
+          <a class="nav-link px-0 text-body-secondary" href="/tools">Tools</a>
+          <a class="nav-link px-0 text-body-secondary" href="/perks">Perks</a>
+          <a class="nav-link px-0 text-body-secondary" href="/dealership">Dealership</a>
+          <a class="nav-link px-0 text-body-secondary" href="/tt-lookup">TT Lookup</a>
+          <a class="nav-link px-0 text-body-secondary" href="/marketplace">Marketplace</a>
+        </nav>
+        <div class="small text-body-secondary">&copy; 2025 Tidal Faction. All rights reserved.</div>
+      </div>
+    </footer>
+  </main>
+
+  <!-- Bootstrap JS bundle -->
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js" defer></script>
+
+  <<script>
+
+    
+  // ===== State =====
+  let groupsSet = new Set();          // normalized group membership
+  let inventoryData = null;
+  let playerName = null;
+
+  // ===== Config + Load =====
+  function saveAndLoad() {
+    const userId = document.getElementById('userIdInput').value.trim();
+    const pkey   = document.getElementById('pkeyInput').value.trim();
+    if (!userId || !pkey) { toast('❌ Please enter both User ID and API Key.', 'danger'); return; }
+    localStorage.setItem('blessing_user_id', userId);
+    localStorage.setItem('blessing_pkey', pkey);
+    toast('✅ Configuration saved!', 'success');
+    fetchData(userId, pkey);
+  }
+
+  function getData() {
+    const userId = document.getElementById('userIdInput').value.trim();
+    const pkey   = document.getElementById('pkeyInput').value.trim();
+    if (!userId || !pkey) { toast('❌ Please enter both User ID and API Key above, then save.', 'danger'); return; }
+    fetchData(userId, pkey);
+  }
+
+  function toggleConfig(){
+    const el = document.getElementById('configContent');
+    const btn = document.getElementById('toggleConfigBtn');
+    const hidden = el.style.display === 'none';
+    el.style.display = hidden ? 'block' : 'none';
+    btn.textContent = hidden ? 'Hide' : 'Show';
+    localStorage.setItem('blessing_config_visible', hidden ? 'true' : 'false');
+  }
+
+  // Normalize groups into a Set so membership checks always work
+  function toGroupSet(groups) {
+    if (!groups) return new Set();
+    if (Array.isArray(groups)) return new Set(groups);
+    if (typeof groups === 'object') return new Set(Object.keys(groups));
+    return new Set();
+  }
+
+  async function fetchUserName(user_id) {
+    try {
+      const r = await fetch(`https://ttapi.elfshot.xyz/userdata?vrpid=${user_id}`);
+      if (!r.ok) return null;
+      const j = await r.json();
+      return j?.data?.userName ?? null;
+    } catch { return null; }
+  }
+
+  async function fetchData(user_id, pkey) {
+    try {
+      const apiUrl = `https://tycoon-2epova.users.cfx.re/status/data/${user_id}`;
+      const response = await fetch(apiUrl, { headers:{ "X-Tycoon-Key": pkey } });
+      if (!response.ok) {
+        const text = await response.text();
+        let msg = `API request failed (${response.status})`;
+        try { const j = JSON.parse(text); msg = j.description ? ('❌ ' + j.description) : (j.error ? ('❌ ' + j.error) : msg); } catch {}
+        throw new Error(msg);
+      }
+      const result = await response.json();
+      if (!result || !result.data) throw new Error('Unexpected API response.');
+
+      const data = result.data;
+      groupsSet    = toGroupSet(data.groups);         // <-- key change
+      inventoryData = data.inventory || null;
+      playerName    = await fetchUserName(user_id);
+
+      renderBlessings(data);
+      renderBlessingCards(inventoryData);
+      toast('✅ Data loaded!', 'success');
+    } catch (e) {
+      showError(e.message || 'Unknown error.');
+    }
+  }
+
+  // ===== UI Helpers =====
+  function toast(message, tone='primary'){
+    const el = document.createElement('div');
+    el.className = `notice bg-${tone}`;
+    el.textContent = message;
+    document.body.appendChild(el);
+    setTimeout(()=>{ el.style.opacity='0'; el.style.transform='translateX(8px)'; setTimeout(()=>el.remove(),300); }, 2600);
+  }
+  function showError(msg){
+    const w = document.getElementById('errorWindow');
+    const t = document.getElementById('errorMessage');
+    t.textContent = msg;
+    w.classList.remove('d-none');
+    setTimeout(()=> w.classList.add('d-none'), 9000);
+  }
+
+  // ===== Search =====
+  function initializeSearch(){
+    const input = document.getElementById('searchInput');
+    const clear = document.getElementById('clearSearch');
+    input.addEventListener('input', handleSearch);
+    input.addEventListener('keydown', e => { if (e.key === 'Escape') clearSearch(); });
+
+    function handleSearch(){
+      const q = input.value.trim().toLowerCase();
+      const box = document.getElementById('searchResults');
+      if (!q){ box.style.display='none'; clear.style.display='none'; return; }
+      clear.style.display='inline-block';
+
+      const results = [];
+      Object.entries(blessingMap).forEach(([key, emoji])=>{
+        const parts = key.split('.');
+        const name = parts[parts.length-1].replace(/_/g,' ');
+        const pack = parts[2]?.toUpperCase?.() || '';
+        if (name.toLowerCase().includes(q) || (emoji||'').includes(q)) {
+          const isOwned = groupsSet.has(key);                 // <-- changed
+          let invCount = 0;
+          if (inventoryData){
+            const blessingKey = key.replace('chat.prefix.', 'blessing_card|');
+            const inventoryKey = Object.keys(inventoryData).find(k => k.startsWith(blessingKey));
+            if (inventoryKey && inventoryData[inventoryKey]) invCount = inventoryData[inventoryKey].amount || 0;
+          }
+          results.push({ key, name, emoji, pack, isOwned, invCount });
+        }
+      });
+
+      results.sort((a,b)=>{
+        if (a.isOwned !== b.isOwned) return (b.isOwned?1:0)-(a.isOwned?1:0);
+        if (a.invCount !== b.invCount) return b.invCount - a.invCount;
+        return a.name.localeCompare(b.name);
+      });
+
+      box.innerHTML = '';
+      if (!results.length){
+        box.innerHTML = `<div class="text-center text-body-secondary small py-2">No blessings found</div>`;
+      } else {
+        results.slice(0,20).forEach(r=>{
+          const row = document.createElement('div');
+          row.className = 'd-flex align-items-center gap-2 p-2 rounded border';
+          row.style.cssText = 'border-color:rgba(255,255,255,.12);background:rgba(255,255,255,.04);cursor:pointer;';
+          if (r.isOwned){ row.style.background='linear-gradient(180deg, rgba(16,185,129,.18), rgba(16,185,129,.06))'; }
+          else if (r.invCount>0){ row.style.background='linear-gradient(180deg, rgba(245,158,11,.18), rgba(245,158,11,.06))'; }
+
+          row.innerHTML = `
+            <span style="font-size:18px">${r.emoji||'❓'}</span>
+            <span class="flex-grow-1">${r.name}</span>
+            <span class="text-body-secondary small me-1">${r.pack||''}</span>
+            ${r.isOwned?'<span class="badge text-bg-success">Owned</span>': (r.invCount>0?('<span class="badge text-bg-warning">×'+r.invCount.toLocaleString()+'</span>'):'')}
+          `;
+          row.addEventListener('click', ()=>{
+            scrollToBlessingInPack(r.key);
+            showBlessingDetails(r.key, r.name, r.emoji||'❓');
+          });
+          box.appendChild(row);
+        });
+        if (results.length>20){
+          const more = document.createElement('div');
+          more.className = 'text-center text-body-secondary small py-1';
+          more.textContent = `+${(results.length-20).toLocaleString()} more results…`;
+          box.appendChild(more);
+        }
+      }
+      box.style.display='block';
+    }
+  }
+  function clearSearch(){
+    const input = document.getElementById('searchInput');
+    const box = document.getElementById('searchResults');
+    const clear = document.getElementById('clearSearch');
+    input.value=''; box.style.display='none'; clear.style.display='none'; input.focus();
+  }
+  function scrollToBlessingInPack(key){
+    document.querySelectorAll('.blessing[data-key]').forEach(el=>{
+      if (el.getAttribute('data-key')===key){
+        el.scrollIntoView({ behavior:'smooth', block:'center' });
+        el.style.transform='scale(1.12)';
+        el.style.boxShadow='0 0 0 .2rem rgba(14,165,233,.35)';
+        setTimeout(()=>{ el.style.transform=''; el.style.boxShadow=''; }, 1200);
+      }
+    });
+  }
+
+  // ===== Render =====
+  function showBlessingDetails(key, name, emoji){
+    toast(`${emoji} ${name} — ${key}`, 'secondary');
+  }
+
+  function addProgressOverview(container){
+    const keys = Object.keys(blessingMap);
+    const owned = keys.filter(k => groupsSet.has(k)).length; // <-- changed
+    const total = keys.length;
+    const pct = total ? Math.round((owned/total)*100) : 0;
+
+    const wrap = document.createElement('div');
+    wrap.className = 'mb-3';
+    wrap.innerHTML = `
+      <div class="d-flex align-items-center justify-content-between mb-2">
+        <div class="fw-semibold">${playerName ? `🏆 ${playerName}'s Overall Progress` : '🏆 Overall Progress'}</div>
+        <div class="text-body-secondary small">${owned.toLocaleString()}/${total.toLocaleString()} (${pct}%)</div>
+      </div>
+      <div class="progress"><div class="progress-bar" role="progressbar"></div></div>
+    `;
+    container.prepend(wrap);
+
+    const legend = document.createElement('div');
+    legend.className = 'd-flex flex-wrap gap-3 align-items-center small text-body-secondary mt-3';
+    legend.innerHTML = `
+      <span class="d-inline-flex align-items-center gap-2">
+        <span style="width:14px;height:14px;border-radius:4px;display:inline-block;background:linear-gradient(180deg, rgba(16,185,129,.8), rgba(16,185,129,.5))"></span>
+        Unlocked
+      </span>
+      <span class="d-inline-flex align-items-center gap-2">
+        <span style="width:14px;height:14px;border-radius:4px;display:inline-block;background:linear-gradient(180deg, rgba(245,158,11,.8), rgba(245,158,11,.5))"></span>
+        In inventory
+      </span>
+      <span class="d-inline-flex align-items-center gap-2">
+        <span style="width:14px;height:14px;border-radius:4px;display:inline-block;background:rgba(255,255,255,.15)"></span>
+        Not obtained
+      </span>
+    `;
+    container.prepend(legend);
+  }
+
+  function renderBlessings(data=null){
+    const container = document.getElementById('blessingsContainer');
+    container.classList.remove('text-center','py-5','text-body-secondary');
+    container.innerHTML = '';
+
+    ['rp1','rp2','rp3'].forEach(pack => container.appendChild(generatePackDiv(pack, data)));
+    addProgressOverview(container);
+  }
+
+  function generatePackDiv(packName, data){
+    const packNames = { rp1:'🌟 Pack 1', rp2:'🎭 Pack 2', rp3:'🚀 Pack 3' };
+    const section = document.createElement('section');
+    section.className = 'mb-4';
+
+    const title = document.createElement('div');
+    title.className = 'd-flex align-items-center justify-content-between mb-2';
+    title.innerHTML = `<h3 class="h6 fw-semibold mb-0">${packNames[packName]} Blessings</h3>`;
+    section.appendChild(title);
+
+    const bar = document.createElement('div');
+    bar.className = 'progress mb-2';
+    const fill = document.createElement('div');
+    fill.className = 'progress-bar';
+    bar.appendChild(fill);
+    section.appendChild(bar);
+
+    const grid = document.createElement('div');
+    grid.className = 'blessings';
+
+    const items = Object.entries(blessingMap)
+      .filter(([k]) => k.startsWith(`chat.prefix.${packName}`))
+      .sort(([a],[b]) => (groupsSet.has(b)?1:0) - (groupsSet.has(a)?1:0)); // <-- changed
+
+    let ownedCount = 0;
+    items.forEach(([key, emoji])=>{
+      const name = key.split('.').pop().replace(/_/g,' ');
+      const tile = document.createElement('div');
+      tile.className = 'blessing';
+      tile.setAttribute('data-key', key);
+      tile.setAttribute('data-name', name);
+      tile.textContent = emoji || '❓';
+
+      if (groupsSet.has(key)) {                         // <-- changed
+        tile.classList.add('owned');
+        ownedCount++;
+      } else if (data && data.inventory){
+        const base = key.replace('chat.prefix.','blessing_card|');
+        const invKey = Object.keys(data.inventory).find(k => k.startsWith(base));
+        const amt = invKey ? (data.inventory[invKey]?.amount || 0) : 0;
+        if (amt>0){
+          tile.classList.add('in-inventory');
+          const badge = document.createElement('span');
+          badge.className = 'blessing-counter';
+          badge.textContent = amt.toLocaleString();
+          tile.appendChild(badge);
+        }
+      }
+
+      tile.addEventListener('click', ()=> showBlessingDetails(key, name, emoji||'❓'));
+      grid.appendChild(tile);
+    });
+
+    const total = items.length;
+    const pct = total ? Math.round((ownedCount/total)*100) : 0;
+    fill.style.width = pct + '%';
+
+    const meta = document.createElement('div');
+    meta.className = 'text-body-secondary small mb-2';
+    meta.textContent = `${ownedCount.toLocaleString()}/${total.toLocaleString()} (${pct}%)`;
+    section.appendChild(meta);
+
+    section.appendChild(grid);
+    return section;
+  }
+
+  function renderBlessingCards(inventory){
+    const list = document.getElementById('blessingCardsList');
+    list.innerHTML = '';
+
+    if (!inventory){
+      list.classList.add('text-body-secondary');
+      list.textContent = 'No inventory data available.';
+      return;
+    }
+
+    const cards = Object.entries(inventory)
+      .filter(([k]) => k.startsWith('blessing_card|'))
+      .map(([k, v])=>{
+        const parts = k.split('|');
+        return {
+          key: k,
+          name: (parts[2] || 'Unknown').replace(/_/g,' '),
+          amount: v?.amount || 0,
+          emoji: inventoryBlessings[k] || '❓'
+        };
+      })
+      .filter(x => x.amount>0)
+      .sort((a,b)=> b.amount - a.amount);
+
+    if (!cards.length){
+      list.classList.add('text-body-secondary');
+      list.textContent = 'No blessing cards found.';
+      return;
+    }
+
+    const frag = document.createDocumentFragment();
+    cards.forEach(c=>{
+      const row = document.createElement('div');
+      row.className = 'blessing-card mb-2';
+      row.innerHTML = `
+        <div class="d-flex align-items-center gap-2">
+          <span style="font-size:18px">${c.emoji}</span>
+          <span>${c.name}</span>
+        </div>
+        <span class="badge text-bg-primary">×${c.amount.toLocaleString()}</span>
+      `;
+      frag.appendChild(row);
+    });
+    list.appendChild(frag);
+  }
+
+  // ===== Placeholders to fill =====
+      const inventoryBlessings = {
+        "blessing_card|rp1.ant": "🐜",
+        "blessing_card|rp1.baby_chick": "🐣",
+        "blessing_card|rp1.badger": "🦡",
+        "blessing_card|rp1.bat": "🦇",
+        "blessing_card|rp1.bear": "🐻",
+        "blessing_card|rp1.bird": "🐦",
+        "blessing_card|rp1.blossom": "🌸",
+        "blessing_card|rp1.blowfish": "🐡",
+        "blessing_card|rp1.boar": "🐗",
+        "blessing_card|rp1.bouquet": "💐",
+        "blessing_card|rp1.bug": "🐞",
+        "blessing_card|rp1.butterfly": "🦋",
+        "blessing_card|rp1.cactus": "🌵",
+        "blessing_card|rp1.camel": "🐪",
+        "blessing_card|rp1.cat": "🐱",
+        "blessing_card|rp1.cat_face": "🐱",
+        "blessing_card|rp1.cherry_blossom": "🌸",
+        "blessing_card|rp1.chestnut": "🌰",
+        "blessing_card|rp1.chicken": "🐔",
+        "blessing_card|rp1.christmas_tree": "🎄",
+        "blessing_card|rp1.collision": "💥",
+        "blessing_card|rp1.cow": "🐄",
+        "blessing_card|rp1.cow_face": "🐄",
+        "blessing_card|rp1.crab": "🦀",
+        "blessing_card|rp1.crescent_moon": "🌙",
+        "blessing_card|rp1.cricket": "🦗",
+        "blessing_card|rp1.crocodile": "🐊",
+        "blessing_card|rp1.dashing_away": "💨",
+        "blessing_card|rp1.deciduous_tree": "🌳",
+        "blessing_card|rp1.deer": "🦌",
+        "blessing_card|rp1.dizzy": "💫",
+        "blessing_card|rp1.dog": "🐕",
+        "blessing_card|rp1.dog_face": "🐶",
+        "blessing_card|rp1.dolphin": "🐬",
+        "blessing_card|rp1.dragon": "🐉",
+        "blessing_card|rp1.dragon_face": "🐲",
+        "blessing_card|rp1.droplet": "💧",
+        "blessing_card|rp1.duck": "🦆",
+        "blessing_card|rp1.eagle": "🦅",
+        "blessing_card|rp1.elephant": "🐘",
+        "blessing_card|rp1.evergreen_tree": "🌲",
+        "blessing_card|rp1.ewe": "🐑",
+        "blessing_card|rp1.fallen_leaf": "🍂",
+        "blessing_card|rp1.fire": "🔥",
+        "blessing_card|rp1.first_quarter_moon": "🌓",
+        "blessing_card|rp1.first_quarter_moon_face": "🌓",
+        "blessing_card|rp1.fish": "🐟",
+        "blessing_card|rp1.four_leaf_clover": "🍀",
+        "blessing_card|rp1.fox": "🦊",
+        "blessing_card|rp1.frog": "🐸",
+        "blessing_card|rp1.front-facing_baby_chick": "🐥",
+        "blessing_card|rp1.full_moon": "🌕",
+        "blessing_card|rp1.full_moon_face": "🌕",
+        "blessing_card|rp1.giraffe": "🦒",
+        "blessing_card|rp1.globe_showing_americas": "🌎",
+        "blessing_card|rp1.globe_showing_asia-australia": "🌏",
+        "blessing_card|rp1.globe_showing_europe-africa": "🌍",
+        "blessing_card|rp1.globe_with_meridians": "🌐",
+        "blessing_card|rp1.glowing_star": "🌟",
+        "blessing_card|rp1.goat": "🐐",
+        "blessing_card|rp1.gorilla": "🦍",
+        "blessing_card|rp1.hamster": "🐹",
+        "blessing_card|rp1.hatching_chick": "🐣",
+        "blessing_card|rp1.hear-no-evil_monkey": "🙉",
+        "blessing_card|rp1.hedgehog": "🦔",
+        "blessing_card|rp1.herb": "🌿",
+        "blessing_card|rp1.hibiscus": "🌺",
+        "blessing_card|rp1.high_voltage": "⚡",
+        "blessing_card|rp1.hippopotamus": "🦛",
+        "blessing_card|rp1.honeybee": "🐝",
+        "blessing_card|rp1.horse": "🐎",
+        "blessing_card|rp1.horse_face": "🐴",
+        "blessing_card|rp1.kangaroo": "🦘",
+        "blessing_card|rp1.koala": "🐨",
+        "blessing_card|rp1.lady_beetle": "🐞",
+        "blessing_card|rp1.last_quarter_moon": "🌗",
+        "blessing_card|rp1.last_quarter_moon_face": "🌗",
+        "blessing_card|rp1.leaf_fluttering_in_wind": "🍃",
+        "blessing_card|rp1.leopard": "🐆",
+        "blessing_card|rp1.lion": "🦁",
+        "blessing_card|rp1.lizard": "🦎",
+        "blessing_card|rp1.llama": "🦙",
+        "blessing_card|rp1.lobster": "🦞",
+        "blessing_card|rp1.maple_leaf": "🍁",
+        "blessing_card|rp1.microbe": "🦠",
+        "blessing_card|rp1.monkey": "🐒",
+        "blessing_card|rp1.monkey_face": "🐵",
+        "blessing_card|rp1.mosquito": "🦟",
+        "blessing_card|rp1.mouse": "🐭",
+        "blessing_card|rp1.mouse_face": "🐭",
+        "blessing_card|rp1.mushroom": "🍄",
+        "blessing_card|rp1.new_moon": "🌑",
+        "blessing_card|rp1.new_moon_face": "🌑",
+        "blessing_card|rp1.octopus": "🐙",
+        "blessing_card|rp1.owl": "🦉",
+        "blessing_card|rp1.ox": "🐂",
+        "blessing_card|rp1.palm_tree": "🌴",
+        "blessing_card|rp1.panda": "🐼",
+        "blessing_card|rp1.parrot": "🦜",
+        "blessing_card|rp1.paw_prints": "🐾",
+        "blessing_card|rp1.peacock": "🦚",
+        "blessing_card|rp1.penguin": "🐧",
+        "blessing_card|rp1.pig": "🐖",
+        "blessing_card|rp1.pig_face": "🐷",
+        "blessing_card|rp1.pig_nose": "🐽",
+        "blessing_card|rp1.pine_decoration": "🎋",
+        "blessing_card|rp1.poodle": "🐩",
+        "blessing_card|rp1.rabbit": "🐇",
+        "blessing_card|rp1.rabbit_face": "🐰",
+        "blessing_card|rp1.raccoon": "🦝",
+        "blessing_card|rp1.rainbow": "🌈",
+        "blessing_card|rp1.ram": "🐏",
+        "blessing_card|rp1.rat": "🐀",
+        "blessing_card|rp1.rhinoceros": "🦏",
+        "blessing_card|rp1.rooster": "🐓",
+        "blessing_card|rp1.rose": "🌹",
+        "blessing_card|rp1.sauropod": "🦕",
+        "blessing_card|rp1.scorpion": "🦂",
+        "blessing_card|rp1.see-no-evil_monkey": "🙈",
+        "blessing_card|rp1.seedling": "🌱",
+        "blessing_card|rp1.shark": "🦈",
+        "blessing_card|rp1.sheaf_of_rice": "🌾",
+        "blessing_card|rp1.shooting_star": "🌠",
+        "blessing_card|rp1.shrimp": "🦐",
+        "blessing_card|rp1.snail": "🐌",
+        "blessing_card|rp1.snake": "🐍",
+        "blessing_card|rp1.snowman_without_snow": "⛄",
+        "blessing_card|rp1.sparkles": "✨",
+        "blessing_card|rp1.speak-no-evil_monkey": "🙊",
+        "blessing_card|rp1.spiral_shell": "🐚",
+        "blessing_card|rp1.spouting_whale": "🐋",
+        "blessing_card|rp1.squid": "🦑",
+        "blessing_card|rp1.star": "⭐",
+        "blessing_card|rp1.sun_behind_cloud": "🌥",
+        "blessing_card|rp1.sun_with_face": "🌞",
+        "blessing_card|rp1.sunflower": "🌻",
+        "blessing_card|rp1.swan": "🦢",
+        "blessing_card|rp1.sweat_droplets": "💦",
+        "blessing_card|rp1.t-rex": "🦖",
+        "blessing_card|rp1.tanabata_tree": "🎋",
+        "blessing_card|rp1.tiger": "🐅",
+        "blessing_card|rp1.tiger_face": "🐯",
+        "blessing_card|rp1.tropical_fish": "🐠",
+        "blessing_card|rp1.tulip": "🌷",
+        "blessing_card|rp1.turkey": "🦃",
+        "blessing_card|rp1.turtle": "🐢",
+        "blessing_card|rp1.two-hump_camel": "🐪",
+        "blessing_card|rp1.umbrella_with_rain_drops": "☔",
+        "blessing_card|rp1.unicorn": "🦄",
+        "blessing_card|rp1.waning_crescent_moon": "🌘",
+        "blessing_card|rp1.waning_gibbous_moon": "🌖",
+        "blessing_card|rp1.water_buffalo": "🐃",
+        "blessing_card|rp1.water.wave": "🌊",
+        "blessing_card|rp1.waxing_crescent_moon": "🌒",
+        "blessing_card|rp1.waxing_gibbous_moon": "🌔",
+        "blessing_card|rp1.whale": "🐋",
+        "blessing_card|rp1.white_flower": "💮",
+        "blessing_card|rp1.wilted_flower": "🥀",
+        "blessing_card|rp1.wolf": "🐺",
+        "blessing_card|rp1.zebra": "🦓",
+        "blessing_card|rp2.airing_of_grievances": "😤",
+        "blessing_card|rp2.ambulance": "🚑",
+        "blessing_card|rp2.blossom": "🌼",
+        "blessing_card|rp2.calendar": "📆",
+        "blessing_card|rp2.clapping_hands": "👏",
+        "blessing_card|rp2.deciduous_tree": "🌳",
+        "blessing_card|rp2.dizzy": "💫",
+        "blessing_card|rp2.dizzy_face": "😵",
+        "blessing_card|rp2.droplet": "💧",
+        "blessing_card|rp2.ewe": "🐑",
+        "blessing_card|rp2.face_with_medical_mask": "😷",
+        "blessing_card|rp2.face_with_thermometer": "🤒",
+        "blessing_card|rp2.feats_of_strength": "💪",
+        "blessing_card|rp2.festivus_miracle": "🙌",
+        "blessing_card|rp2.four_leaf_clover": "🍀",
+        "blessing_card|rp2.globe_with_meridians": "🌐",
+        "blessing_card|rp2.hand_with_fingers_splayed": "🖐",
+        "blessing_card|rp2.hatching_chick": "🐣",
+        "blessing_card|rp2.hedgehog": "🦔",
+        "blessing_card|rp2.honeybee": "🐝",
+        "blessing_card|rp2.hospital": "🏥",
+        "blessing_card|rp2.leaf_fluttering_in_wind": "🍃",
+        "blessing_card|rp2.lotion_bottle": "🧴",
+        "blessing_card|rp2.medical_symbol": "⚕",
+        "blessing_card|rp2.microbe": "🦠",
+        "blessing_card|rp2.pager": "📟",
+        "blessing_card|rp2.palms_up_together": "🤲",
+        "blessing_card|rp2.pill": "💊",
+        "blessing_card|rp2.potable_water": "🚰",
+        "blessing_card|rp2.rabbit": "🐰",
+        "blessing_card|rp2.rainbow": "🌈",
+        "blessing_card|rp2.seedling": "🌱",
+        "blessing_card|rp2.sheaf_of_rice": "🌾",
+        "blessing_card|rp2.soap": "🧼",
+        "blessing_card|rp2.sun_with_face": "🌞",
+        "blessing_card|rp2.sunflower": "🌻",
+        "blessing_card|rp2.swan": "🦢",
+        "blessing_card|rp2.sweat_droplets": "💦",
+        "blessing_card|rp2.syringe": "💉",
+        "blessing_card|rp2.tulip": "🌷",
+        "blessing_card|rp2.world_map": "🗺",
+        "blessing_card|rp3.8_ball": "🎱",
+        "blessing_card|rp3.alien": "👽",
+        "blessing_card|rp3.anchor": "⚓",
+        "blessing_card|rp3.apple": "🍎",
+        "blessing_card|rp3.bacon": "🥓",
+        "blessing_card|rp3.banana": "🍌",
+        "blessing_card|rp3.beer": "🍺",
+        "blessing_card|rp3.bow_and_arrow": "🏹",
+        "blessing_card|rp3.broccoli": "🥦",
+        "blessing_card|rp3.broom": "🧹",
+        "blessing_card|rp3.bus": "🚌",
+        "blessing_card|rp3.carrot": "🥕",
+        "blessing_card|rp3.cherry": "🍒",
+        "blessing_card|rp3.circus": "🎪",
+        "blessing_card|rp3.clairvoyant": "🔮",
+        "blessing_card|rp3.comet": "☄",
+        "blessing_card|rp3.compass": "🧭",
+        "blessing_card|rp3.construction": "🚧",
+        "blessing_card|rp3.cowboy_face": "🤠",
+        "blessing_card|rp3.crown": "👑",
+        "blessing_card|rp3.dice": "🎲",
+        "blessing_card|rp3.direct_hit": "🎯",
+        "blessing_card|rp3.dna": "🧬",
+        "blessing_card|rp3.donut": "🍩",
+        "blessing_card|rp3.dove": "🕊",
+        "blessing_card|rp3.ear_of_corn": "🌽",
+        "blessing_card|rp3.eggplant": "🍆",
+        "blessing_card|rp3.eyes": "👀",
+        "blessing_card|rp3.face_with_sunglasses": "😎",
+        "blessing_card|rp3.firecracker": "🧨",
+        "blessing_card|rp3.fishing_pole": "🎣",
+        "blessing_card|rp3.flamingo": "🦩",
+        "blessing_card|rp3.flying_disc": "🥏",
+        "blessing_card|rp3.ghost": "👻",
+        "blessing_card|rp3.gift": "🎁",
+        "blessing_card|rp3.grape": "🍇",
+        "blessing_card|rp3.green_truck": "🚛",
+        "blessing_card|rp3.helicopter": "🚁",
+        "blessing_card|rp3.horse_racing": "🏇",
+        "blessing_card|rp3.ice_cube": "🧊",
+        "blessing_card|rp3.key": "🔑",
+        "blessing_card|rp3.kiwi": "🥝",
+        "blessing_card|rp3.lemon": "🍋",
+        "blessing_card|rp3.lollipop": "🍭",
+        "blessing_card|rp3.map_of_japan": "🗾",
+        "blessing_card|rp3.megaphone": "📣",
+        "blessing_card|rp3.mermaid": "🧜‍♀️",
+        "blessing_card|rp3.mind_blown": "🤯",
+        "blessing_card|rp3.money_bag": "💰",
+        "blessing_card|rp3.mount_fuji": "🗻",
+        "blessing_card|rp3.nerd_face": "🤓",
+        "blessing_card|rp3.night_with_stars": "🌃",
+        "blessing_card|rp3.ninja_cat": "🐱‍👤",
+        "blessing_card|rp3.orangutan": "🦧",
+        "blessing_card|rp3.otter": "🦦",
+        "blessing_card|rp3.peach": "🍑",
+        "blessing_card|rp3.peanuts": "🥜",
+        "blessing_card|rp3.pear": "🍐",
+        "blessing_card|rp3.pile_of_poo": "💩",
+        "blessing_card|rp3.pineapple": "🍍",
+        "blessing_card|rp3.pretzel": "🥨",
+        "blessing_card|rp3.puzzle_piece": "🧩",
+        "blessing_card|rp3.recycling": "♻️",
+        "blessing_card|rp3.robot": "🤖",
+        "blessing_card|rp3.rocket": "🚀",
+        "blessing_card|rp3.rosette": "🏵",
+        "blessing_card|rp3.salt": "🧂",
+        "blessing_card|rp3.satellite": "📡",
+        "blessing_card|rp3.saturn": "🪐",
+        "blessing_card|rp3.saxophone": "🎷",
+        "blessing_card|rp3.scale": "⚖️",
+        "blessing_card|rp3.scissors": "✂",
+        "blessing_card|rp3.service_dog": "🐕‍🦺",
+        "blessing_card|rp3.skunk": "🦨",
+        "blessing_card|rp3.sloth": "🦥",
+        "blessing_card|rp3.small_airplane": "🛩",
+        "blessing_card|rp3.snowflake": "❄",
+        "blessing_card|rp3.spider": "🕷",
+        "blessing_card|rp3.squirrel": "🐿️",
+        "blessing_card|rp3.star-struck": "🤩",
+        "blessing_card|rp3.statue_of_liberty": "🗽",
+        "blessing_card|rp3.strawberry": "🍓",
+        "blessing_card|rp3.stunt_cat": "🐱‍🏍",
+        "blessing_card|rp3.tokyo_tower": "🗼",
+        "blessing_card|rp3.tomato": "🍅",
+        "blessing_card|rp3.tornado": "🌪",
+        "blessing_card|rp3.trident": "🔱",
+        "blessing_card|rp3.trumpet": "🎺",
+        "blessing_card|rp3.watermelon": "🍉",
+        "blessing_card|rp3.yo-yo": "🪀",
+        "blessing_card|rp3.zany_face": "🤪",
+        "blessing_card|rp3.zzz": "💤"
+      }
+      const blessingMap = {
+        "chat.prefix.rp1.ant": "🐜",
+        "chat.prefix.rp1.baby_chick": "🐤",
+        "chat.prefix.rp1.badger": "🦡",
+        "chat.prefix.rp1.bat": "🦇",
+        "chat.prefix.rp1.bear": "🐻",
+        "chat.prefix.rp1.bird": "🐦",
+        "chat.prefix.rp1.blossom": "🌼",
+        "chat.prefix.rp1.blowfish": "🐡",
+        "chat.prefix.rp1.boar": "🐗",
+        "chat.prefix.rp1.bouquet": "💐",
+        "chat.prefix.rp1.bug": "🐛",
+        "chat.prefix.rp1.butterfly": "🦋",
+        "chat.prefix.rp1.cactus": "🌵",
+        "chat.prefix.rp1.camel": "🐫",
+        "chat.prefix.rp1.cat": "🐈",
+        "chat.prefix.rp1.cat_face": "🐱",
+        "chat.prefix.rp1.cherry_blossom": "🌸",
+        "chat.prefix.rp1.chestnut": "🌰",
+        "chat.prefix.rp1.chicken": "🐔",
+        "chat.prefix.rp1.christmas_tree": "🎄",
+        "chat.prefix.rp1.collision": "💥",
+        "chat.prefix.rp1.cow": "🐮",
+        "chat.prefix.rp1.cow_face": "🐮",
+        "chat.prefix.rp1.crab": "🦀",
+        "chat.prefix.rp1.crescent_moon": "🌙",
+        "chat.prefix.rp1.cricket": "🦗",
+        "chat.prefix.rp1.crocodile": "🐊",
+        "chat.prefix.rp1.dashing_away": "💨",
+        "chat.prefix.rp1.deciduous_tree": "🌳",
+        "chat.prefix.rp1.deer": "🦌",
+        "chat.prefix.rp1.dizzy": "💫",
+        "chat.prefix.rp1.dog": "🐕",
+        "chat.prefix.rp1.dog_face": "🐶",
+        "chat.prefix.rp1.dolphin": "🐬",
+        "chat.prefix.rp1.dragon": "🐉",
+        "chat.prefix.rp1.dragon_face": "🐲",
+        "chat.prefix.rp1.droplet": "💧",
+        "chat.prefix.rp1.duck": "🦆",
+        "chat.prefix.rp1.eagle": "🦅",
+        "chat.prefix.rp1.elephant": "🐘",
+        "chat.prefix.rp1.evergreen_tree": "🌲",
+        "chat.prefix.rp1.ewe": "🐑",
+        "chat.prefix.rp1.fallen_leaf": "🍂",
+        "chat.prefix.rp1.fire": "🔥",
+        "chat.prefix.rp1.first_quarter_moon": "🌓",
+        "chat.prefix.rp1.first_quarter_moon_face": "🌛",
+        "chat.prefix.rp1.fish": "🐟",
+        "chat.prefix.rp1.four_leaf_clover": "🍀",
+        "chat.prefix.rp1.fox": "🦊",
+        "chat.prefix.rp1.frog": "🐸",
+        "chat.prefix.rp1.front-facing_baby_chick": "🐥",
+        "chat.prefix.rp1.full_moon": "🌕",
+        "chat.prefix.rp1.full_moon_face": "🌝",
+        "chat.prefix.rp1.giraffe": "🦒",
+        "chat.prefix.rp1.globe_showing_americas": "🌎",
+        "chat.prefix.rp1.globe_showing_asia-australia": "🌏",
+        "chat.prefix.rp1.globe_showing_europe-africa": "🌍",
+        "chat.prefix.rp1.globe_with_meridians": "🌐",
+        "chat.prefix.rp1.glowing_star": "🌟",
+        "chat.prefix.rp1.goat": "🐐",
+        "chat.prefix.rp1.gorilla": "🦍",
+        "chat.prefix.rp1.hamster": "🐹",
+        "chat.prefix.rp1.hatching_chick": "🐣",
+        "chat.prefix.rp1.hear-no-evil_monkey": "🙉",
+        "chat.prefix.rp1.hedgehog": "🦔",
+        "chat.prefix.rp1.herb": "🌿",
+        "chat.prefix.rp1.hibiscus": "🌺",
+        "chat.prefix.rp1.high_voltage": "⚡",
+        "chat.prefix.rp1.hippopotamus": "🦛",
+        "chat.prefix.rp1.honeybee": "🐝",
+        "chat.prefix.rp1.horse": "🐎",
+        "chat.prefix.rp1.horse_face": "🐴",
+        "chat.prefix.rp1.kangaroo": "🦘",
+        "chat.prefix.rp1.koala": "🐨",
+        "chat.prefix.rp1.lady_beetle": "🐞",
+        "chat.prefix.rp1.last_quarter_moon": "🌗",
+        "chat.prefix.rp1.last_quarter_moon_face": "🌜",
+        "chat.prefix.rp1.leaf_fluttering_in_wind": "🍃",
+        "chat.prefix.rp1.leopard": "🐆",
+        "chat.prefix.rp1.lion": "🦁",
+        "chat.prefix.rp1.lizard": "🦎",
+        "chat.prefix.rp1.llama": "🦙",
+        "chat.prefix.rp1.lobster": "🦞",
+        "chat.prefix.rp1.maple_leaf": "🍁",
+        "chat.prefix.rp1.microbe": "🦠",
+        "chat.prefix.rp1.monkey": "🐒",
+        "chat.prefix.rp1.monkey_face": "🐵",
+        "chat.prefix.rp1.mosquito": "🦟",
+        "chat.prefix.rp1.mouse": "🐭",
+        "chat.prefix.rp1.mouse_face": "🐭",
+        "chat.prefix.rp1.mushroom": "🍄",
+        "chat.prefix.rp1.new_moon": "🌑",
+        "chat.prefix.rp1.new_moon_face": "🌚",
+        "chat.prefix.rp1.octopus": "🐙",
+        "chat.prefix.rp1.owl": "🦉",
+        "chat.prefix.rp1.ox": "🐂",
+        "chat.prefix.rp1.palm_tree": "🌴",
+        "chat.prefix.rp1.panda": "🐼",
+        "chat.prefix.rp1.parrot": "🦜",
+        "chat.prefix.rp1.paw_prints": "🐾",
+        "chat.prefix.rp1.peacock": "🦚",
+        "chat.prefix.rp1.penguin": "🐧",
+        "chat.prefix.rp1.pig": "🐖",
+        "chat.prefix.rp1.pig_face": "🐷",
+        "chat.prefix.rp1.pig_nose": "🐽",
+        "chat.prefix.rp1.pine_decoration": "🎍",
+        "chat.prefix.rp1.poodle": "🐩",
+        "chat.prefix.rp1.rabbit": "🐇",
+        "chat.prefix.rp1.rabbit_face": "🐰",
+        "chat.prefix.rp1.raccoon": "🦝",
+        "chat.prefix.rp1.rainbow": "🌈",
+        "chat.prefix.rp1.ram": "🐏",
+        "chat.prefix.rp1.rat": "🐀",
+        "chat.prefix.rp1.rhinoceros": "🦏",
+        "chat.prefix.rp1.rooster": "🐓",
+        "chat.prefix.rp1.rose": "🌹",
+        "chat.prefix.rp1.sauropod": "🦕",
+        "chat.prefix.rp1.scorpion": "🦂",
+        "chat.prefix.rp1.see-no-evil_monkey": "🙈",
+        "chat.prefix.rp1.seedling": "🌱",
+        "chat.prefix.rp1.shark": "🦈",
+        "chat.prefix.rp1.sheaf_of_rice": "🌾",
+        "chat.prefix.rp1.shooting_star": "🌠",
+        "chat.prefix.rp1.shrimp": "🦐",
+        "chat.prefix.rp1.snail": "🐌",
+        "chat.prefix.rp1.snake": "🐍",
+        "chat.prefix.rp1.snowman_without_snow": "⛄",
+        "chat.prefix.rp1.sparkles": "✨",
+        "chat.prefix.rp1.speak-no-evil_monkey": "🙊",
+        "chat.prefix.rp1.spiral_shell": "🐚",
+        "chat.prefix.rp1.spouting_whale": "🐳",
+        "chat.prefix.rp1.squid": "🦑",
+        "chat.prefix.rp1.star": "⭐",
+        "chat.prefix.rp1.sun_behind_cloud": "⛅",
+        "chat.prefix.rp1.sun_with_face": "🌞",
+        "chat.prefix.rp1.sunflower": "🌻",
+        "chat.prefix.rp1.swan": "🦢",
+        "chat.prefix.rp1.sweat_droplets": "💦",
+        "chat.prefix.rp1.t-rex": "🦖",
+        "chat.prefix.rp1.tanabata_tree": "🎋",
+        "chat.prefix.rp1.tiger": "🐅",
+        "chat.prefix.rp1.tiger_face": "🐯",
+        "chat.prefix.rp1.tropical_fish": "🐠",
+        "chat.prefix.rp1.tulip": "🌷",
+        "chat.prefix.rp1.turkey": "🦃",
+        "chat.prefix.rp1.turtle": "🐢",
+        "chat.prefix.rp1.two-hump_camel": "🐫",
+        "chat.prefix.rp1.umbrella_with_rain_drops": "☔",
+        "chat.prefix.rp1.unicorn": "🦄",
+        "chat.prefix.rp1.waning_crescent_moon": "🌘",
+        "chat.prefix.rp1.waning_gibbous_moon": "🌖",
+        "chat.prefix.rp1.water_buffalo": "🐃",
+        "chat.prefix.rp1.water_wave": "🌊",
+        "chat.prefix.rp1.waxing_crescent_moon": "🌒",
+        "chat.prefix.rp1.waxing_gibbous_moon": "🌔",
+        "chat.prefix.rp1.whale": "🐳",
+        "chat.prefix.rp1.white_flower": "💮",
+        "chat.prefix.rp1.wilted_flower": "🥀",
+        "chat.prefix.rp1.wolf": "🐺",
+        "chat.prefix.rp1.zebra": "🦓",
+        "chat.prefix.rp2.airing_of_grievances": "😤",
+        "chat.prefix.rp2.ambulance": "🚑",
+        "chat.prefix.rp2.blossom": "🌼",
+        "chat.prefix.rp2.calendar": "📆",
+        "chat.prefix.rp2.clapping_hands": "👏",
+        "chat.prefix.rp2.deciduous_tree": "🌳",
+        "chat.prefix.rp2.dizzy": "💫",
+        "chat.prefix.rp2.dizzy_face": "😵",
+        "chat.prefix.rp2.droplet": "💧",
+        "chat.prefix.rp2.ewe": "🐑",
+        "chat.prefix.rp2.face_with_medical_mask": "😷",
+        "chat.prefix.rp2.face_with_thermometer": "🤒",
+        "chat.prefix.rp2.feats_of_strength": "💪",
+        "chat.prefix.rp2.festivus_miracle": "🙌",
+        "chat.prefix.rp2.four_leaf_clover": "🍀",
+        "chat.prefix.rp2.globe_with_meridians": "🌐",
+        "chat.prefix.rp2.hand_with_fingers_splayed": "🖐",
+        "chat.prefix.rp2.hatching_chick": "🐣",
+        "chat.prefix.rp2.hedgehog": "🦔",
+        "chat.prefix.rp2.honeybee": "🐝",
+        "chat.prefix.rp2.hospital": "🏥",
+        "chat.prefix.rp2.leaf_fluttering_in_wind": "🍃",
+        "chat.prefix.rp2.lotion_bottle": "🧴",
+        "chat.prefix.rp2.medical_symbol": "⚕",
+        "chat.prefix.rp2.microbe": "🦠",
+        "chat.prefix.rp2.pager": "📟",
+        "chat.prefix.rp2.palms_up_together": "🤲",
+        "chat.prefix.rp2.pill": "💊",
+        "chat.prefix.rp2.potable_water": "🚰",
+        "chat.prefix.rp2.rabbit": "🐇",
+        "chat.prefix.rp2.rainbow": "🌈",
+        "chat.prefix.rp2.seedling": "🌱",
+        "chat.prefix.rp2.sheaf_of_rice": "🌾",
+        "chat.prefix.rp2.soap": "🧼",
+        "chat.prefix.rp2.sun_with_face": "🌞",
+        "chat.prefix.rp2.sunflower": "🌻",
+        "chat.prefix.rp2.swan": "🦢",
+        "chat.prefix.rp2.sweat_droplets": "💦",
+        "chat.prefix.rp2.syringe": "💉",
+        "chat.prefix.rp2.tulip": "🌷",
+        "chat.prefix.rp2.world_map": "🗺",
+        "chat.prefix.rp3.8_ball": "🎱",
+        "chat.prefix.rp3.alien": "👽",
+        "chat.prefix.rp3.anchor": "⚓",
+        "chat.prefix.rp3.apple": "🍎",
+        "chat.prefix.rp3.bacon": "🥓",
+        "chat.prefix.rp3.banana": "🍌",
+        "chat.prefix.rp3.beer": "🍺",
+        "chat.prefix.rp3.bow_and_arrow": "🏹",
+        "chat.prefix.rp3.broccoli": "🥦",
+        "chat.prefix.rp3.broom": "🧹",
+        "chat.prefix.rp3.bus": "🚌",
+        "chat.prefix.rp3.carrot": "🥕",
+        "chat.prefix.rp3.cherry": "🍒",
+        "chat.prefix.rp3.circus": "🎪",
+        "chat.prefix.rp3.clairvoyant": "🔮",
+        "chat.prefix.rp3.comet": "☄",
+        "chat.prefix.rp3.compass": "🧭",
+        "chat.prefix.rp3.construction": "🚧",
+        "chat.prefix.rp3.cowboy_face": "🤠",
+        "chat.prefix.rp3.crown": "👑",
+        "chat.prefix.rp3.dice": "🎲",
+        "chat.prefix.rp3.direct_hit": "🎯",
+        "chat.prefix.rp3.dna": "🧬",
+        "chat.prefix.rp3.donut": "🍩",
+        "chat.prefix.rp3.dove": "🕊",
+        "chat.prefix.rp3.ear_of_corn": "🌽",
+        "chat.prefix.rp3.eggplant": "🍆",
+        "chat.prefix.rp3.eyes": "👀",
+        "chat.prefix.rp3.face_with_sunglasses": "😎",
+        "chat.prefix.rp3.firecracker": "🧨",
+        "chat.prefix.rp3.fishing_pole": "🎣",
+        "chat.prefix.rp3.flamingo": "🦩",
+        "chat.prefix.rp3.flying_disc": "🥏",
+        "chat.prefix.rp3.ghost": "👻",
+        "chat.prefix.rp3.gift": "🎁",
+        "chat.prefix.rp3.grape": "🍇",
+        "chat.prefix.rp3.green_truck": "🚛",
+        "chat.prefix.rp3.helicopter": "🚁",
+        "chat.prefix.rp3.horse_racing": "🏇",
+        "chat.prefix.rp3.ice_cube": "🧊",
+        "chat.prefix.rp3.key": "🔑",
+        "chat.prefix.rp3.kiwi": "🥝",
+        "chat.prefix.rp3.lemon": "🍋",
+        "chat.prefix.rp3.lollipop": "🍭",
+        "chat.prefix.rp3.map_of_japan": "🗾",
+        "chat.prefix.rp3.megaphone": "📣",
+        "chat.prefix.rp3.mermaid": "🧜‍♀️",
+        "chat.prefix.rp3.mind_blown": "🤯",
+        "chat.prefix.rp3.money_bag": "💰",
+        "chat.prefix.rp3.mount_fuji": "🗻",
+        "chat.prefix.rp3.nerd_face": "🤓",
+        "chat.prefix.rp3.night_with_stars": "🌃",
+        "chat.prefix.rp3.ninja_cat": "🐱‍👤",
+        "chat.prefix.rp3.orangutan": "🦧",
+        "chat.prefix.rp3.otter": "🦦",
+        "chat.prefix.rp3.peach": "🍑",
+        "chat.prefix.rp3.peanuts": "🥜",
+        "chat.prefix.rp3.pear": "🍐",
+        "chat.prefix.rp3.pile_of_poo": "💩",
+        "chat.prefix.rp3.pineapple": "🍍",
+        "chat.prefix.rp3.pretzel": "🥨",
+        "chat.prefix.rp3.puzzle_piece": "🧩",
+        "chat.prefix.rp3.recycling": "♻️",
+        "chat.prefix.rp3.robot": "🤖",
+        "chat.prefix.rp3.rocket": "🚀",
+        "chat.prefix.rp3.rosette": "🏵",
+        "chat.prefix.rp3.salt": "🧂",
+        "chat.prefix.rp3.satellite": "📡",
+        "chat.prefix.rp3.saturn": "🪐",
+        "chat.prefix.rp3.saxophone": "🎷",
+        "chat.prefix.rp3.scale": "⚖️",
+        "chat.prefix.rp3.scissors": "✂",
+        "chat.prefix.rp3.service_dog": "🐕‍🦺",
+        "chat.prefix.rp3.skunk": "🦨",
+        "chat.prefix.rp3.sloth": "🦥",
+        "chat.prefix.rp3.small_airplane": "🛩",
+        "chat.prefix.rp3.snowflake": "❄",
+        "chat.prefix.rp3.spider": "🕷",
+        "chat.prefix.rp3.squirrel": "🐿️",
+        "chat.prefix.rp3.star-struck": "🤩",
+        "chat.prefix.rp3.statue_of_liberty": "🗽",
+        "chat.prefix.rp3.strawberry": "🍓",
+        "chat.prefix.rp3.stunt_cat": "🐱‍🏍",
+        "chat.prefix.rp3.tokyo_tower": "🗼",
+        "chat.prefix.rp3.tomato": "🍅",
+        "chat.prefix.rp3.tornado": "🌪",
+        "chat.prefix.rp3.trident": "🔱",
+        "chat.prefix.rp3.trumpet": "🎺",
+        "chat.prefix.rp3.watermelon": "🍉",
+        "chat.prefix.rp3.yo-yo": "🪀",
+        "chat.prefix.rp3.zany_face": "🤪",
+        "chat.prefix.rp3.zzz": "💤"
+      }
+
+  // ===== Boot =====
+  function initializeApp(){
+    const savedUserId = localStorage.getItem('blessing_user_id');
+    const savedPkey  = localStorage.getItem('blessing_pkey');
+    if (savedUserId) document.getElementById('userIdInput').value = savedUserId;
+    if (savedPkey)   document.getElementById('pkeyInput').value   = savedPkey;
+
+    const visible = localStorage.getItem('blessing_config_visible');
+    if (visible === 'false'){ document.getElementById('configContent').style.display='none'; document.getElementById('toggleConfigBtn').textContent='Show'; }
+
+    // Initial skeleton render (works even with empty maps)
+    renderBlessings();
+
+    // Auto-load if creds present
+    if (savedUserId && savedPkey) fetchData(savedUserId, savedPkey);
+  }
+
+  document.addEventListener('DOMContentLoaded', ()=>{
+    initializeApp();
+    initializeSearch();
+  });
+</script>
+</body>
+</html>
