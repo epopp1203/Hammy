@@ -256,38 +256,6 @@ body {
   align-items: center;
 }
 
-.inventory-alert-settings {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-top: 8px;
-  gap: 8px;
-  font-size: 10px;
-  color: #cbd5e1;
-}
-
-.inventory-alert-settings label {
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-}
-
-.inventory-alert-settings select {
-  background: rgba(15, 23, 35, 0.8);
-  color: #f8fafc;
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  border-radius: 4px;
-  padding: 3px 6px;
-  font-size: 11px;
-  outline: none;
-  cursor: pointer;
-}
-
-.inventory-alert-settings select option {
-  background: rgba(15, 23, 35, 0.95);
-  color: #f8fafc;
-}
-
 .inventory-warning {
   margin-top: 8px;
   padding: 4px 8px;
@@ -299,6 +267,12 @@ body {
   text-transform: uppercase;
   letter-spacing: 0.5px;
   border: 1px solid rgba(239, 68, 68, 0.3);
+  animation: flash 1s infinite;
+}
+
+@keyframes flash {
+  0%, 50% { opacity: 1; }
+  51%, 100% { opacity: 0.3; }
 }
 
 .inventory-card.alerting {
