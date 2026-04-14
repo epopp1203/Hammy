@@ -23,16 +23,7 @@ let sessionTotalMined = 0;
 let lastTotalOre = 0;
 let hasInitialized = false;
 let inventoryAlertTriggered = false;
-let alertTone = 'high';
 const INVENTORY_ALERT_THRESHOLD = 95;
-const ALERT_TONES = {
-  high: 880,
-  medium: 600,
-  low: 300
-};
-const STORAGE_KEYS = {
-  alertTone: 'miningTracker_alertTone'
-};
 
 // NEW: one-shot initial request + capped retry
 let hasRequestedInitialData = false;
@@ -204,13 +195,10 @@ function getSavedPosition() {
 }
 
 function toggleUI(visible) {
-  // Removed logging: console.log("Mining tracker: toggleUI called with visible =", visible);
   document.getElementById("draggableWindow").style.display = visible ? "block" : "none";
   if (visible && !sessionStartTime) {
-    // Removed logging: console.log("Mining tracker: UI now visible, requesting fresh data...");
     sessionStartTime = Date.now();
     startSessionTimer();
-    // Removed logging: console.log("Mining tracker: Updating HUD with existing data");
   }
 }
 
@@ -232,43 +220,6 @@ function updateSessionTime() {
   }
 }
 
-function getAlertToneFrequency() {
-  return ALERT_TONES[alertTone] ?? ALERT_TONES.high;
-}
-
-function loadAlertConfig() {
-  try {
-    const savedTone = localStorage.getItem(STORAGE_KEYS.alertTone);
-    if (savedTone && ALERT_TONES[savedTone]) {
-      alertTone = savedTone;
-    }
-  } catch {
-    // ignore storage errors
-  }
-}
-
-function saveAlertConfig() {
-  try {
-    localStorage.setItem(STORAGE_KEYS.alertTone, alertTone);
-  } catch {
-    // ignore storage errors
-  }
-}
-
-function initializeAlertControls() {
-  const toneSelect = document.getElementById('alert-tone-select');
-  if (!toneSelect) return;
-
-  toneSelect.value = alertTone;
-  toneSelect.addEventListener('change', (event) => {
-    const value = event.target.value;
-    if (ALERT_TONES[value]) {
-      alertTone = value;
-      saveAlertConfig();
-    }
-  });
-}
-
 function updateInventoryWarningState(isWarning) {
   const inventoryCard = document.querySelector('.inventory-card');
   const warningBadge = document.getElementById('alert-warning-badge');
@@ -282,10 +233,10 @@ function updateInventoryWarningState(isWarning) {
 }
 
 function playInventoryAlertSound() {
-  for (let i = 0; i < 7; i++) {
-    setTimeout(() => {
-      window.parent.postMessage({ type: "sfx", sfx: 17 }, "*");
-    }, i * 200);
+  const alertAudio = document.getElementById('alertSound');
+  if (alertAudio) {
+    alertAudio.currentTime = 0; // Restart sound
+    alertAudio.play().catch(() => {}); // Play and ignore browser block errors
   }
 }
 
@@ -305,7 +256,6 @@ function checkInventoryThreshold(percentage) {
 }
 
 function updateHUD(weight, maxWeight) {
-  // Removed logging: console.log("Mining tracker: updateHUD called with weight =", weight, "maxWeight =", maxWeight);
   const invCurrent = document.getElementById("inv-current");
   const invMax = document.getElementById("inv-max");
   const invPercent = document.getElementById("inv-percent");
@@ -335,7 +285,6 @@ function updateHUD(weight, maxWeight) {
 
   const copperAmount = lastInventoryObj?.mining_copper?.amount ?? 0;
   const copperVoucherCount = lastInventoryObj?.mining_token_copper?.amount ?? 0;
-  // Removed logging: console.log("Mining tracker: Copper data - amount:", copperAmount, "vouchers:", copperVoucherCount);
 
   if (copperTotal) {
     copperTotal.textContent = copperAmount.toLocaleString();
@@ -357,7 +306,6 @@ function updateHUD(weight, maxWeight) {
 
   const ironAmount = lastInventoryObj?.mining_iron?.amount ?? 0;
   const ironVoucherCount = lastInventoryObj?.mining_token_iron?.amount ?? 0;
-  // Removed logging: console.log("Mining tracker: Iron data - amount:", ironAmount, "vouchers:", ironVoucherCount);
 
   if (ironTotal) {
     ironTotal.textContent = ironAmount.toLocaleString();
@@ -573,15 +521,14 @@ async function tryAutoVoucherExchange() {
   isExchanging = false;
 }
 
-// ---------- INITIAL DATA REQUEST (anti-spam) ----------
 function scheduleInitialRetry() {
   if (hasInitialized || initialDataRetries >= MAX_INITIAL_RETRIES) return;
   clearTimeout(initialDataRetryTimer);
-  const delay = 3000 * Math.pow(2, initialDataRetries); // 3s, 6s, 12s
+  const delay = 3000 * Math.pow(2, initialDataRetries);
   initialDataRetryTimer = setTimeout(() => {
     if (!hasInitialized) {
       initialDataRetries += 1;
-      hasRequestedInitialData = false; // allow another send
+      hasRequestedInitialData = false;
       requestInitialData();
     }
   }, delay);
@@ -593,14 +540,11 @@ function requestInitialData() {
   window.parent.postMessage({ type: "getData" }, "*");
   scheduleInitialRetry();
 }
-// ------------------------------------------------------
 
 window.addEventListener("message", (event) => {
-  // Removed logging: console.log("Mining tracker received payload:", event.data);
   const data = event.data?.data;
   if (!data || typeof data !== 'object') return;
 
-  // FIRST DATA RECEIVED -> mark initialized & stop retries
   if (!hasInitialized) {
     hasInitialized = true;
     clearTimeout(initialDataRetryTimer);
@@ -707,8 +651,6 @@ window.addEventListener("message", (event) => {
 
 window.onload = () => {
   toggleUI(false);
-  didReopenIron = false;
-  didReopenCopper = false;
   initializeDragging();
 
   const escapeListener = (e) => {
@@ -718,10 +660,6 @@ window.onload = () => {
   };
   window.addEventListener('keydown', escapeListener);
 
-  loadAlertConfig();
-  initializeAlertControls();
   updateInventoryWarningState(false);
-
-  // Instead of spamming, request once + (optional) limited retries only if no data arrives
   requestInitialData();
 };
