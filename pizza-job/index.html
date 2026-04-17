@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Pizza Job</title>
+		<link rel="stylesheet" href="style.css" />
+	</head>
+	<body>
+		<div id="app" class="app">
+			<header class="topbar">
+				<div class="brand">
+					<h1>Pizza Job</h1>
+					<p class="subtitle">Order + Supply Assistant</p>
+				</div>
+				<div class="topbar-actions">
+					<button id="simulate-order-btn" class="btn btn-secondary" title="Load a random order">
+						New Order
+					</button>
+					<button id="settings-toggle-btn" class="btn btn-primary" title="Open settings">Settings</button>
+				</div>
+			</header>
+
+			<main class="layout">
+				<section class="card order-card" aria-label="Current pizza order">
+					<div class="card-header">
+						<h2>Current Order</h2>
+						<span id="order-id" class="pill">#0000</span>
+					</div>
+					<div id="order-list" class="item-list"></div>
+					<div class="card-footer">
+						<button id="clear-order-btn" class="btn btn-secondary">Clear Order</button>
+					</div>
+				</section>
+
+				<section class="card" aria-label="Trunk inventory">
+					<div class="card-header">
+						<h2>Trunk Inventory</h2>
+						<span id="trunk-alert-count" class="pill pill-alert">0 Low</span>
+					</div>
+					<div id="trunk-list" class="item-list"></div>
+				</section>
+
+				<section class="card" aria-label="Personal inventory">
+					<div class="card-header">
+						<h2>Personal Inventory</h2>
+					</div>
+					<div id="inventory-list" class="item-list"></div>
+				</section>
+			</main>
+
+			<aside id="settings-panel" class="settings-panel hidden" aria-label="Settings panel">
+				<div class="settings-header">
+					<h3>Settings</h3>
+					<button id="settings-close-btn" class="icon-btn" aria-label="Close settings">x</button>
+				</div>
+				<div class="settings-content">
+					<label class="setting-row">
+						<span>Low Stock Threshold</span>
+						<input id="low-threshold-input" type="number" min="1" max="99" value="5" />
+					</label>
+					<label class="setting-row checkbox-row">
+						<input id="gps-enabled-input" type="checkbox" checked />
+						<span>Enable GTA V GPS Waypoint</span>
+					</label>
+					<div class="setting-row stacked">
+						<span>Waypoint Coordinates</span>
+						<div class="coords-row">
+							<input id="gps-x-input" type="number" step="0.01" placeholder="X" value="224.54" />
+							<input id="gps-y-input" type="number" step="0.01" placeholder="Y" value="-895.21" />
+						</div>
+					</div>
+					<button id="apply-gps-btn" class="btn btn-primary">Set Waypoint</button>
+				</div>
+			</aside>
+
+			<div id="toast" class="toast hidden" role="status" aria-live="polite"></div>
+		</div>
+
+		<script src="script.js"></script>
+	</body>
+</html>

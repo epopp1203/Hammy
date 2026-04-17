@@ -21,6 +21,27 @@ let inventoryAlertTriggered = false;
 let INVENTORY_ALERT_THRESHOLD = parseInt(localStorage.getItem("miningTracker_threshold")) || 95;
 let isMuted = localStorage.getItem("miningTracker_muted") === "true";
 
+// Session persistence
+const SESSION_TTL_MS = 2 * 60 * 60 * 1000;
+let sessionExchangeCount = 0;
+
+// Opacity cycling
+const OPACITY_LEVELS = [0.95, 0.70, 0.40, 0.20];
+let opacityIndex = parseInt(localStorage.getItem("miningTracker_opacity") || "0");
+
+// Auto-exchange toggle
+let autoExchangeEnabled = localStorage.getItem("miningTracker_autoExchange") !== "false";
+
+// Inventory ETA
+const weightHistory = [];
+const WEIGHT_HISTORY_MS = 5 * 60 * 1000;
+
+// HUD debounce
+let hudDebounceTimer = null;
+
+// Waiting state
+let waitingStateTimer = null;
+
 // NEW: one-shot initial request + capped retry
 let hasRequestedInitialData = false;
 let initialDataRetryTimer = null;
@@ -196,6 +217,9 @@ function toggleUI(visible) {
     sessionStartTime = Date.now();
     startSessionTimer();
   }
+  if (!visible && sessionStartTime && (sessionTotalMined > 0 || sessionExchangeCount > 0)) {
+    showSessionSummary();
+  }
 }
 
 function startSessionTimer() {
@@ -309,6 +333,149 @@ function updateMuteUI() {
 
 }
 
+function saveSessionData() {
+  if (!sessionStartTime) return;
+  try {
+    const data = {
+      startTime: sessionStartTime,
+      totalMined: sessionTotalMined,
+      lastTotalOre: lastTotalOre,
+      exchangeCount: sessionExchangeCount,
+      timestamp: Date.now()
+    };
+    localStorage.setItem("miningTracker_session", JSON.stringify(data));
+  } catch {}
+}
+
+function loadSessionData() {
+  try {
+    const saved = localStorage.getItem("miningTracker_session");
+    if (!saved) return;
+    const data = JSON.parse(saved);
+    if (Date.now() - data.timestamp > SESSION_TTL_MS) {
+      localStorage.removeItem("miningTracker_session");
+      return;
+    }
+    sessionStartTime = data.startTime || null;
+    sessionTotalMined = data.totalMined || 0;
+    lastTotalOre = data.lastTotalOre || 0;
+    sessionExchangeCount = data.exchangeCount || 0;
+    const exchEl = document.getElementById("total-exchanges");
+    if (exchEl) exchEl.textContent = sessionExchangeCount.toLocaleString();
+    if (sessionStartTime) startSessionTimer();
+  } catch {}
+}
+
+function showSessionSummary() {
+  const elapsed = Date.now() - sessionStartTime;
+  const hours = Math.floor(elapsed / 3600000);
+  const minutes = Math.floor((elapsed % 3600000) / 60000);
+  const timeStr = hours > 0 ? `${hours}h ${minutes}m` : `${minutes}m`;
+  const copperVouchers = lastInventoryObj?.mining_token_copper?.amount ?? 0;
+  const ironVouchers = lastInventoryObj?.mining_token_iron?.amount ?? 0;
+  const toast = document.getElementById("session-toast");
+  const body = document.getElementById("toast-body");
+  if (toast && body) {
+    body.innerHTML = `
+      <div>Time: ${timeStr}</div>
+      <div>Mined: ${sessionTotalMined.toLocaleString()}</div>
+      <div>Vouchers: ${(copperVouchers + ironVouchers).toLocaleString()}</div>
+      <div>Exchanges: ${sessionExchangeCount.toLocaleString()}</div>
+    `;
+    toast.hidden = false;
+    setTimeout(() => { toast.hidden = true; }, 6000);
+  }
+}
+
+function updateMinimizedStats() {
+  const stats = document.getElementById("minimized-stats");
+  if (!stats) return;
+  const pct = (lastWeight != null && lastMaxWeight != null)
+    ? Math.round((lastWeight / lastMaxWeight) * 100)
+    : "--";
+  const cu = lastInventoryObj?.mining_copper?.amount ?? 0;
+  const fe = lastInventoryObj?.mining_iron?.amount ?? 0;
+  stats.textContent = `Inv: ${pct}%  ·  Cu: ${cu}  ·  Fe: ${fe}`;
+}
+
+function updateInventoryETA(weight, maxWeight) {
+  const etaEl = document.getElementById("inv-eta");
+  if (!etaEl) return;
+  const now = Date.now();
+  weightHistory.push({ time: now, weight });
+  while (weightHistory.length > 1 && now - weightHistory[0].time > WEIGHT_HISTORY_MS) {
+    weightHistory.shift();
+  }
+  if (weightHistory.length < 2) { etaEl.textContent = ""; return; }
+  const oldest = weightHistory[0];
+  const elapsed = now - oldest.time;
+  const gained = weight - oldest.weight;
+  if (gained <= 0 || elapsed <= 0) { etaEl.textContent = ""; return; }
+  const fillRatePerMs = gained / elapsed;
+  const remaining = maxWeight - weight;
+  const etaMs = remaining / fillRatePerMs;
+  if (etaMs <= 0) { etaEl.textContent = ""; return; }
+  const etaMins = Math.round(etaMs / 60000);
+  if (etaMins <= 0) {
+    etaEl.textContent = "Full <1m";
+  } else if (etaMins < 60) {
+    etaEl.textContent = `Full ~${etaMins}m`;
+  } else {
+    const h = Math.floor(etaMins / 60);
+    const m = etaMins % 60;
+    etaEl.textContent = `Full ~${h}h${m}m`;
+  }
+}
+
+function initializeAutoExchangeBtn() {
+  const btn = document.getElementById("autoExchangeBtn");
+  if (!btn) return;
+  updateAutoExchangeUI();
+  btn.addEventListener("click", () => {
+    autoExchangeEnabled = !autoExchangeEnabled;
+    localStorage.setItem("miningTracker_autoExchange", autoExchangeEnabled);
+    updateAutoExchangeUI();
+  });
+}
+
+function updateAutoExchangeUI() {
+  const btn = document.getElementById("autoExchangeBtn");
+  if (!btn) return;
+  if (autoExchangeEnabled) {
+    btn.classList.add("active");
+    btn.title = "Auto-Exchange: On";
+  } else {
+    btn.classList.remove("active");
+    btn.title = "Auto-Exchange: Off";
+  }
+}
+
+function initializeOpacityBtn() {
+  const btn = document.getElementById("opacityBtn");
+  if (!btn) return;
+  btn.addEventListener("click", () => {
+    opacityIndex = (opacityIndex + 1) % OPACITY_LEVELS.length;
+    localStorage.setItem("miningTracker_opacity", opacityIndex);
+    applyOpacity();
+  });
+}
+
+function applyOpacity() {
+  const container = document.getElementById("draggableWindow");
+  if (container) {
+    container.style.background = `rgba(15, 23, 35, ${OPACITY_LEVELS[opacityIndex]})`;
+  }
+}
+
+function startWaitingStateTimer() {
+  waitingStateTimer = setTimeout(() => {
+    if (!hasInitialized) {
+      const ws = document.getElementById("waiting-state");
+      if (ws) ws.hidden = false;
+    }
+  }, 2000);
+}
+
 function checkInventoryThreshold(percentage) {
   const isWarning = percentage > INVENTORY_ALERT_THRESHOLD;
 
@@ -342,8 +509,18 @@ function updateHUD(weight, maxWeight) {
     const percentage = (weight / maxWeight) * 100;
     if (inventoryProgress) {
       inventoryProgress.style.width = percentage + "%";
+      if (percentage >= 90) {
+        inventoryProgress.classList.add('danger');
+        inventoryProgress.classList.remove('warn');
+      } else if (percentage >= 70) {
+        inventoryProgress.classList.add('warn');
+        inventoryProgress.classList.remove('danger');
+      } else {
+        inventoryProgress.classList.remove('warn', 'danger');
+      }
     }
     checkInventoryThreshold(percentage);
+    updateInventoryETA(weight, maxWeight);
   }
 
   const copperRate = getOreRate("mining_copper");
@@ -367,6 +544,13 @@ function updateHUD(weight, maxWeight) {
   if (copperHr) copperHr.textContent = copperRate.hr.toLocaleString();
   if (copperMin) copperMin.textContent = copperRate.min;
 
+  const copperTrendEl = document.getElementById("copper-trend");
+  if (copperTrendEl) {
+    if (copperRate.trend === 1)       { copperTrendEl.textContent = '▲'; copperTrendEl.className = 'rate-trend trend-up'; }
+    else if (copperRate.trend === -1) { copperTrendEl.textContent = '▼'; copperTrendEl.className = 'rate-trend trend-down'; }
+    else                              { copperTrendEl.textContent = '—'; copperTrendEl.className = 'rate-trend trend-neutral'; }
+  }
+
   const ironRate = getOreRate("mining_iron");
   const ironTotal = document.getElementById("iron-total");
   const ironVouchers = document.getElementById("iron-vouchers");
@@ -387,7 +571,15 @@ function updateHUD(weight, maxWeight) {
   if (ironVouchers) ironVouchers.textContent = ironVoucherCount.toLocaleString();
   if (ironHr) ironHr.textContent = ironRate.hr.toLocaleString();
   if (ironMin) ironMin.textContent = ironRate.min;
-  
+
+  const ironTrendEl = document.getElementById("iron-trend");
+  if (ironTrendEl) {
+    if (ironRate.trend === 1)       { ironTrendEl.textContent = '▲'; ironTrendEl.className = 'rate-trend trend-up'; }
+    else if (ironRate.trend === -1) { ironTrendEl.textContent = '▼'; ironTrendEl.className = 'rate-trend trend-down'; }
+    else                            { ironTrendEl.textContent = '—'; ironTrendEl.className = 'rate-trend trend-neutral'; }
+  }
+
+  updateMinimizedStats();
   updatePerformanceMetrics();
 }
 
@@ -415,6 +607,7 @@ function updatePerformanceMetrics() {
     
     if (totalMinedEl) totalMinedEl.textContent = totalMined.toLocaleString();
     if (totalVouchersEl) totalVouchersEl.textContent = totalVouchers.toLocaleString();
+    saveSessionData();
   }
   
   updateBXP();
@@ -460,7 +653,7 @@ function updateOreLog(oreType, amount) {
 
 function getOreRate(oreType) {
   const log = oreLog[oreType];
-  if (!hasFirstGain[oreType] || log.length < 2) return { hr: 0, min: 0 };
+  if (!hasFirstGain[oreType] || log.length < 2) return { hr: 0, min: 0, trend: 0 };
   
   const now = Date.now();
   
@@ -475,7 +668,7 @@ function getOreRate(oreType) {
     }
   }
   
-  if (miningOnlyLog.length < 2) return { hr: 0, min: 0 };
+  if (miningOnlyLog.length < 2) return { hr: 0, min: 0, trend: 0 };
   
   const [first, last] = [miningOnlyLog[0], miningOnlyLog[miningOnlyLog.length - 1]];
   const sessionDuration = last.time - first.time;
@@ -494,12 +687,17 @@ function getOreRate(oreType) {
     const recentHours = recentDuration / 3600000;
     if (recentHours > 0) recentRateHr = recentCount / recentHours;
   } else {
-    return { hr: Math.round(sessionRateHr), min: Math.round(sessionRateHr / 60) };
+    return { hr: Math.round(sessionRateHr), min: Math.round(sessionRateHr / 60), trend: 0 };
   }
 
   const sessionWeight = Math.min(sessionDuration / RECENT_WINDOW_MS, 1.0);
   const hybridHr = sessionRateHr * sessionWeight + recentRateHr * (1 - sessionWeight);
-  return { hr: Math.round(hybridHr), min: Math.round(hybridHr / 60) };
+  let trend = 0;
+  if (sessionRateHr > 0) {
+    if (recentRateHr > sessionRateHr * 1.1) trend = 1;
+    else if (recentRateHr < sessionRateHr * 0.9) trend = -1;
+  }
+  return { hr: Math.round(hybridHr), min: Math.round(hybridHr / 60), trend };
 }
 
 let lastIronVoucherCount = null;
@@ -517,6 +715,7 @@ function shouldReopenMenu() {
 }
 
 async function tryAutoVoucherExchange() {
+  if (!autoExchangeEnabled) return;
   const choices = window.state.cache.menu_choices ?? [];
   const inv = lastInventoryObj;
   
@@ -552,6 +751,10 @@ async function tryAutoVoucherExchange() {
     if (option) {
       window.parent.postMessage({ type: 'forceMenuChoice', choice: option, mod: 0 }, '*');
       await new Promise(res => setTimeout(res, 500));
+      sessionExchangeCount++;
+      saveSessionData();
+      const exchEl = document.getElementById("total-exchanges");
+      if (exchEl) exchEl.textContent = sessionExchangeCount.toLocaleString();
       return true;
     }
     return false;
@@ -617,6 +820,9 @@ window.addEventListener("message", (event) => {
   if (!hasInitialized) {
     hasInitialized = true;
     clearTimeout(initialDataRetryTimer);
+    clearTimeout(waitingStateTimer);
+    const ws = document.getElementById("waiting-state");
+    if (ws) ws.hidden = true;
   }
 
   for (const [key, value] of Object.entries(data)) {
@@ -676,9 +882,10 @@ window.addEventListener("message", (event) => {
       const amount = invObj[ore]?.amount || 0;
       updateOreLog(ore, amount);
     }
-    updateHUD(lastWeight, lastMaxWeight);
+    clearTimeout(hudDebounceTimer);
+    hudDebounceTimer = setTimeout(() => updateHUD(lastWeight, lastMaxWeight), 100);
     
-    if (!isExchanging) {
+    if (!isExchanging && autoExchangeEnabled) {
       const ironAmount = invObj["mining_iron"]?.amount ?? 0;
       const copperAmount = invObj["mining_copper"]?.amount ?? 0;
 
@@ -720,12 +927,19 @@ window.addEventListener("message", (event) => {
 
 window.onload = () => {
 
+  loadSessionData();
+
   toggleUI(false);
 
   initializeDragging();
 
-  initializeAlertSettings(); // Added initialization call
+  initializeAlertSettings();
 
+  initializeAutoExchangeBtn();
+
+  initializeOpacityBtn();
+
+  applyOpacity();
 
   const escapeListener = (e) => {
 
@@ -735,12 +949,19 @@ window.onload = () => {
 
     }
 
+    if (e.key === "F6") {
+
+      toggleMinimize();
+
+    }
+
   };
 
   window.addEventListener('keydown', escapeListener);
 
-
   updateInventoryWarningState(false);
+
+  startWaitingStateTimer();
 
   requestInitialData();
 
