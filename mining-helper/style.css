@@ -28,7 +28,78 @@ body {
   will-change: transform;
   transition: width 0.3s ease, height 0.3s ease;
 }
+/* ... existing styles ... */
 
+/* Mute Button Styles */
+.btn-mute {
+  background: rgba(255, 255, 255, 0.1);
+  border: none;
+  border-radius: 4px;
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #cbd5e1;
+  cursor: pointer;
+  font-size: 10px;
+}
+
+.btn-mute:hover {
+  background: rgba(255, 255, 255, 0.2);
+  color: #ffffff;
+}
+
+.btn-mute.muted {
+  color: #f87171;
+  background: rgba(248, 113, 113, 0.15);
+}
+
+/* Updated Inventory Header */
+.inventory-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+}
+
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* Threshold Container & Dropdown */
+.threshold-container {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: rgba(0, 0, 0, 0.3);
+  padding: 2px 6px;
+  border-radius: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.threshold-container i {
+  font-size: 9px;
+  color: #94a3b8;
+}
+
+.threshold-dropdown {
+  background: transparent;
+  color: #ffffff;
+  border: none;
+  font-size: 10px;
+  font-family: inherit;
+  cursor: pointer;
+  outline: none;
+  padding: 0;
+}
+
+.threshold-dropdown option {
+  background: #0f1723; /* Dark dashboard background */
+  color: #ffffff;
+}
 .dashboard-container.horizontal {
   width: 560px;
   height: auto;

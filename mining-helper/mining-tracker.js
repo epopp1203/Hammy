@@ -23,7 +23,9 @@ let sessionTotalMined = 0;
 let lastTotalOre = 0;
 let hasInitialized = false;
 let inventoryAlertTriggered = false;
-const INVENTORY_ALERT_THRESHOLD = 95;
+let inventoryAlertTriggered = false;
+let INVENTORY_ALERT_THRESHOLD = parseInt(localStorage.getItem("miningTracker_threshold")) || 95;
+let isMuted = localStorage.getItem("miningTracker_muted") === "true";
 
 // NEW: one-shot initial request + capped retry
 let hasRequestedInitialData = false;
@@ -233,11 +235,84 @@ function updateInventoryWarningState(isWarning) {
 }
 
 function playInventoryAlertSound() {
+
+  if (isMuted) return; // Exit if muted
+
   const alertAudio = document.getElementById('alertSound');
+
   if (alertAudio) {
-    alertAudio.currentTime = 0; // Restart sound
-    alertAudio.play().catch(() => {}); // Play and ignore browser block errors
+
+    alertAudio.currentTime = 0;
+
+    alertAudio.play().catch(() => {});
+
   }
+
+}
+function initializeAlertSettings() {
+
+  const muteBtn = document.getElementById("muteBtn");
+
+  const thresholdSelect = document.getElementById("thresholdSelect");
+
+
+  if (isMuted) updateMuteUI();
+
+  if (thresholdSelect) thresholdSelect.value = INVENTORY_ALERT_THRESHOLD;
+
+
+  if (muteBtn) {
+
+    muteBtn.addEventListener("click", () => {
+
+      isMuted = !isMuted;
+
+      localStorage.setItem("miningTracker_muted", isMuted);
+
+      updateMuteUI();
+
+    });
+
+  }
+
+
+  if (thresholdSelect) {
+
+    thresholdSelect.addEventListener("change", (e) => {
+
+      INVENTORY_ALERT_THRESHOLD = parseInt(e.target.value);
+
+      localStorage.setItem("miningTracker_threshold", INVENTORY_ALERT_THRESHOLD);
+
+    });
+
+  }
+
+}
+
+
+function updateMuteUI() {
+
+  const muteBtn = document.getElementById("muteBtn");
+
+  if (!muteBtn) return;
+
+  const icon = muteBtn.querySelector("i");
+
+  if (isMuted) {
+
+    muteBtn.classList.add("muted");
+
+    icon.className = "fas fa-volume-mute";
+
+  } else {
+
+    muteBtn.classList.remove("muted");
+
+    icon.className = "fas fa-volume-up";
+
+  }
+
 }
 
 function checkInventoryThreshold(percentage) {
@@ -650,16 +725,29 @@ window.addEventListener("message", (event) => {
 });
 
 window.onload = () => {
+
   toggleUI(false);
+
   initializeDragging();
 
+  initializeAlertSettings(); // Added initialization call
+
+
   const escapeListener = (e) => {
+
     if (e.key === "Escape") {
+
       window.parent.postMessage({type: "pin"}, "*");
+
     }
+
   };
+
   window.addEventListener('keydown', escapeListener);
 
+
   updateInventoryWarningState(false);
+
   requestInitialData();
+
 };
