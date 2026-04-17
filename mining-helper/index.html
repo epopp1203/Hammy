@@ -15,7 +15,14 @@
           <i class="fas fa-pickaxe"></i>
           <span>Mining Dashboard</span>
         </div>
+        <div id="minimized-stats" class="minimized-stats"></div>
         <div class="header-actions">
+          <button class="btn-autoexchange active" id="autoExchangeBtn" title="Auto-Exchange: On">
+            <i class="fas fa-sync-alt"></i>
+          </button>
+          <button class="btn-opacity" id="opacityBtn" title="Cycle Opacity">
+            <i class="fas fa-adjust"></i>
+          </button>
           <button class="btn-mute" id="muteBtn" title="Mute Alert">
             <i class="fas fa-volume-up"></i>
           </button>
@@ -61,9 +68,14 @@
               </div>
               <div class="inventory-details">
                 <span class="inventory-text" id="inv-percent">--%</span>
+                <span id="inv-eta" class="inv-eta"></span>
                 <span class="inventory-capacity">
                   <span id="inv-current">--</span> / <span id="inv-max">--</span> kg
                 </span>
+              </div>
+              <div id="waiting-state" class="waiting-state" hidden>
+                <i class="fas fa-circle-notch fa-spin"></i>
+                <span>Waiting for data...</span>
               </div>
               <div id="alert-warning-badge" class="inventory-warning" hidden>Inventory high</div>
             </div>
@@ -104,7 +116,7 @@
                 <div class="stat-label">Vouchers</div>
               </div>
               <div class="stat-item">
-                <div class="stat-value" id="copper-hr">0</div>
+                <div class="stat-value" id="copper-hr">0 <span class="rate-trend" id="copper-trend"></span></div>
                 <div class="stat-label">Per Hour</div>
               </div>
               <div class="stat-item">
@@ -138,7 +150,7 @@
                 <div class="stat-label">Vouchers</div>
               </div>
               <div class="stat-item">
-                <div class="stat-value" id="iron-hr">0</div>
+                <div class="stat-value" id="iron-hr">0 <span class="rate-trend" id="iron-trend"></span></div>
                 <div class="stat-label">Per Hour</div>
               </div>
               <div class="stat-item">
@@ -185,12 +197,25 @@
               <div class="metric-label">Total Vouchers</div>
             </div>
           </div>
+          <div class="metric-card">
+            <div class="metric-icon">
+              <i class="fas fa-exchange-alt"></i>
+            </div>
+            <div class="metric-content">
+              <div class="metric-value" id="total-exchanges">0</div>
+              <div class="metric-label">Exchanges</div>
+            </div>
+          </div>
         </div>
       </div>
     </div>
   </div>
 
   <audio id="alertSound" src="Alert.mp3" preload="auto"></audio>
+  <div id="session-toast" class="session-toast" hidden>
+    <div class="toast-title"><i class="fas fa-chart-bar"></i> Session Summary</div>
+    <div class="toast-body" id="toast-body"></div>
+  </div>
   <script src="mining-tracker.js"></script>
 </body>
 </html>
