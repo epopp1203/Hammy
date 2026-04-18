@@ -15,6 +15,7 @@ const DEBUG_FILTER_STORAGE_KEY = "pizzaJobDebugFilterMode";
 const INTEGRATION_POLL_INTERVAL_MS = 1500;
 const VEHICLE_TRUNK_REFRESH_COOLDOWN_MS = 800;
 const TYCOON_OPEN_TRUNK_COMMANDS = ["rm_trunk", "rm_cabtrunk"];
+const PIZZA_DELIVERY_JOB_NAME = "Pizza Delivery";
 
 const TRUNK_ITEM_KEY_ALIASES = {
 	Pizza: ["Pizza", "pizza", "pizza_slice"],
@@ -57,44 +58,15 @@ function generateRandomOrderId() {
 	return Math.floor(Math.random() * 9000) + 1000;
 }
 
-const state = {
-	orderId: generateRandomOrderId(),
-	order: {
-		Pizza: 3,
-		"Chicken Nuggets": 2,
-		Fries: 2,
-		"Expensive Water": 1,
-		"Onion Rings": 1,
-		Soda: 2
-	},
-	trunk: {
-		Pizza: 8,
-		"Chicken Nuggets": 6,
-		Fries: 6,
-		"Expensive Water": 4,
-		"Onion Rings": 5,
-		Soda: 7
-	},
-	inventory: {
-		Pizza: 0,
-		"Chicken Nuggets": 0,
-		Fries: 0,
-		"Expensive Water": 0,
-		"Onion Rings": 0,
-		Soda: 0
-	},
-	settings: {
-		lowThreshold: 5,
-		bgOpacity: 0.82,
-		gpsEnabled: true,
-		gpsX: null,
-		gpsY: null
-	},
-	orderSync: {
-		source: "Local",
-		at: null
-	},
-	tycoonTrunk: {
+function createEmptyTrackedItemTable() {
+	return TRACKED_ITEMS.reduce((table, item) => {
+		table[item] = 0;
+		return table;
+	}, {});
+}
+
+function createInitialTycoonTrunkState() {
+	return {
 		activeChestId: null,
 		menuOpen: false,
 		menuName: "",
@@ -106,7 +78,28 @@ const state = {
 		lastTakeItem: "",
 		lastTakeAt: 0,
 		busy: false
-	}
+	};
+}
+
+const state = {
+	orderId: generateRandomOrderId(),
+	order: createEmptyTrackedItemTable(),
+	trunk: createEmptyTrackedItemTable(),
+	inventory: createEmptyTrackedItemTable(),
+	settings: {
+		lowThreshold: 5,
+		bgOpacity: 0.82,
+		gpsEnabled: true,
+		gpsX: null,
+		gpsY: null
+	},
+	playerJobName: "",
+	isPizzaDeliveryActive: false,
+	orderSync: {
+		source: "Local",
+		at: null
+	},
+	tycoonTrunk: createInitialTycoonTrunkState()
 };
 
 const refs = {
@@ -163,6 +156,102 @@ let lastVehicleTrunkRefreshAt = 0;
 let lastInVehicleState = null;
 let lastTycoonPromptSeenAt = 0;
 let lastFocusedTycoonPayloadSignature = "";
+
+function normalizeJobName(jobName) {
+	return typeof jobName === "string" ? jobName.trim() : "";
+}
+
+function setPizzaJobAppVisible(isVisible) {
+	refs.app.classList.toggle("hidden", !isVisible);
+	if (!isVisible) {
+		refs.settingsPanel.classList.add("hidden");
+		setDebugPanelOpen(false);
+	}
+}
+
+function requestPassiveTycoonState(reason = "job-state") {
+	window.parent.postMessage(
+		{
+			type: "getData",
+			reason
+		},
+		"*"
+	);
+}
+
+function setPlayerJobState(jobName) {
+	const normalizedJobName = normalizeJobName(jobName);
+	const isPizzaDeliveryActive = normalizedJobName === PIZZA_DELIVERY_JOB_NAME;
+	const jobChanged = normalizedJobName !== state.playerJobName;
+	const activeChanged = isPizzaDeliveryActive !== state.isPizzaDeliveryActive;
+
+	if (!jobChanged && !activeChanged) {
+		return;
+	}
+
+	state.playerJobName = normalizedJobName;
+	state.isPizzaDeliveryActive = isPizzaDeliveryActive;
+
+	if (!isPizzaDeliveryActive) {
+		resetPizzaJobRuntimeState();
+		setPizzaJobAppVisible(false);
+		return;
+	}
+
+	setPizzaJobAppVisible(true);
+
+	if (activeChanged) {
+		requestNuiData();
+		refreshVehicleTrunkInventory("job-activated");
+		render();
+	}
+}
+
+function updatePlayerJobStateFromPayload(payload) {
+	if (!payload || typeof payload !== "object") {
+		return;
+	}
+
+	const nextJobName = normalizeJobName(payload.job_name) || normalizeJobName(payload.job_title);
+	if (nextJobName) {
+		setPlayerJobState(nextJobName);
+	}
+}
+
+function resetPizzaJobRuntimeState() {
+	state.orderId = generateRandomOrderId();
+	state.order = createEmptyTrackedItemTable();
+	state.trunk = createEmptyTrackedItemTable();
+	state.inventory = createEmptyTrackedItemTable();
+	state.orderSync.source = "Waiting for Pizza Delivery";
+	state.orderSync.at = null;
+	state.tycoonTrunk = createInitialTycoonTrunkState();
+	state.settings.gpsX = null;
+	state.settings.gpsY = null;
+	lastVehicleTrunkRefreshAt = 0;
+	lastInVehicleState = null;
+	lastTycoonPromptSeenAt = 0;
+	lastFocusedTycoonPayloadSignature = "";
+	saveSettings();
+	render();
+
+	if (!window.GetParentResourceName) {
+		return;
+	}
+
+	const payload = { action: "clearWaypoint" };
+	window.postMessage(payload, "*");
+	const resourceName = window.GetParentResourceName();
+	fetch(`https://${resourceName}/clearWaypoint`, {
+		method: "POST",
+		headers: {
+			"Content-Type": "application/json"
+		},
+		body: JSON.stringify(payload)
+	}).catch(() => {
+		// Ignore endpoint errors during local browser testing.
+	});
+}
 
 function ordersEqual(leftOrder, rightOrder) {
 	if (!leftOrder || !rightOrder) {
@@ -1931,6 +2020,10 @@ function applyTrunkInventoryFromVehicle(payload, sourceLabel = "vehicle trunk") 
 }
 
 function refreshVehicleTrunkInventory(reason) {
+	if (!state.isPizzaDeliveryActive) {
+		return;
+	}
+
 	const now = Date.now();
 	if (now - lastVehicleTrunkRefreshAt < VEHICLE_TRUNK_REFRESH_COOLDOWN_MS) {
 		return;
@@ -2103,6 +2196,10 @@ function handleIncomingMarkerPayload(payload) {
 }
 
 function requestNuiData() {
+	if (!state.isPizzaDeliveryActive) {
+		return;
+	}
+
 	if (!window.GetParentResourceName) {
 		return;
 	}
@@ -2570,6 +2667,10 @@ function setupEventHandlers() {
 			}
 
 			const parsedData = parseLikelySerializedPayload(data);
+			updatePlayerJobStateFromPayload(parsedData);
+			if (!state.isPizzaDeliveryActive) {
+				continue;
+			}
 
 			if (typeof parsedData.chest === "string") {
 				state.tycoonTrunk.activeChestId = parsedData.chest === "none" ? null : parsedData.chest;
@@ -2714,9 +2815,15 @@ function setupEventHandlers() {
 	});
 
 	if (window.GetParentResourceName) {
-		window.setInterval(requestNuiData, INTEGRATION_POLL_INTERVAL_MS);
-		requestNuiData();
-		refreshVehicleTrunkInventory("initial-load");
+		window.setInterval(() => {
+			if (state.isPizzaDeliveryActive) {
+				requestNuiData();
+				return;
+			}
+
+			requestPassiveTycoonState("job-state-poll");
+		}, INTEGRATION_POLL_INTERVAL_MS);
+		requestPassiveTycoonState("initial-load");
 	}
 }
 
@@ -2724,4 +2831,6 @@ setupEventHandlers();
 loadSettings();
 loadPanelLayout();
 loadDebugPanelLayout();
+resetPizzaJobRuntimeState();
+setPizzaJobAppVisible(false);
 render();
