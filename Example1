@@ -1,0 +1,161 @@
+
+<html>
+    <title>Test Application</title>
+    <div style="left: 50%; transform: translateX(-50%); position: fixed;">
+        <ul id="buttons"></ul>
+        <details style="width: fit-content; min-width: 100px;">
+            <summary>Cached Data</summary>
+            <div style="max-height: 80vh; overflow-y: auto;">
+                <table id="data">
+                    <tr>
+                        <th>Key</th>
+                        <th>Value</th>
+                    </tr>
+                </table>
+            </div>
+        </details>
+    </div>
+    <script>
+        // Example button actions showcasing what can be done
+        const actions = [
+            {
+                name: "Paleto Bay",
+                action: {type: "setWaypoint", x: -267, y: 6231},
+            },
+            {
+                name: "Sandy Shores",
+                action: {type: "setWaypoint", x: 1601, y: 3662},
+            },
+            {
+                name: "Los Santos",
+                action: {type: "setWaypoint", x: 228, y: -878},
+            },
+            {
+                name: "Faction Menu",
+                action: {type: "sendCommand", command: "faction"},
+            },
+            {
+                name: "Open Trunk",
+                action: {type: "sendCommand", command: "rm_trunk"},
+            },
+            {
+                name: "Accept Trigger",
+                action: {type: "sendCommand", command: "userapp_trigger accept"},
+            },
+            {
+                name: "Get Cached Data",
+                action: {type: "getData"},
+            },
+            {
+                name: "Sample Notification",
+                action: {type: "notification", text: "Hello, World!"},
+            },
+            {
+                name: "Sample Popup",
+                action: {type: "popup", title: "Title", text: "Hello, World!"},
+            },
+            {
+                name: "Sample Oneliner",
+                action: {type: "oneliner", text: "Hello, World!"},
+            },
+            {
+                name: "Sample Message",
+                action: {type: "message", text: "Hello, World!"},
+            },
+            {
+                name: "Sample Info",
+                action: {type: "info", text: "Hello, World!", time: 10},
+            }
+        ];
+        for (const action of actions) {
+            const button = document.createElement("button");
+            button.textContent = action.name;
+            button.onclick = () => {
+                window.parent.postMessage(action.action, "*");
+            };
+            document.querySelector("#buttons").appendChild(button);
+        }
+
+        // It is recommended to have a button to close the window
+        // This is a simple example of how to do it
+        const escapeListener = (e) => {
+            if (e.key === "Escape") {
+                // Pin the window, meaning we give control back to the game
+                window.parent.postMessage({type: "pin"}, "*");
+            }
+        };
+        window.addEventListener('keydown', escapeListener);
+
+        // Restrict length of data on screen, to avoid flooding the screen
+        const trunc = (str, len) => {
+            len = len || 50;
+            if (str.length > len) {
+                return str.substring(0, len) + "...";
+            }
+            return str;
+        };
+
+        // The game client will send data that we can handle
+        // Data is sent as key/value pairs in event.data.data
+        // The client only sends data that has changed, unless getData is requested, in which case all cached data is sent
+        window.addEventListener("message", (event) => {
+            const evt = event.data;
+            // Display all data key/value pairs in a table
+            for (const key in evt.data)
+            {
+                let found = false;
+                // Update the existing entries so we don't have duplicates
+                for (const row of document.querySelector("#data").children)
+                {
+                    if (row.children[0].textContent === key)
+                    {
+                        row.children[1].textContent = trunc(evt.data[key]);
+                        found = true;
+                        break;
+                    }
+                }
+                if (found) continue;
+                const row = document.createElement("tr");
+                const c1 = document.createElement("td");
+                const c2 = document.createElement("td");
+                c1.textContent = key;
+                c2.textContent = trunc(evt.data[key]);
+                row.appendChild(c1);
+                row.appendChild(c2);
+                document.querySelector("#data").appendChild(row);
+            }
+            // Example handling for the default bindable keys
+            // The command userapp_trigger <key> can be bound manually
+            // trigger_ is prepended to the key name to avoid conflicts
+            for (const key in evt.data)
+            {
+                if (key == "trigger_square") {
+                    console.log("Square pressed!");
+                    window.parent.postMessage({type: "notification", text: "Square pressed!"}, "*");
+                } else if (key == "trigger_circle") {
+                    console.log("Circle pressed!");
+                    window.parent.postMessage({type: "notification", text: "Circle pressed!"}, "*");
+                } else if (key == "trigger_triangle") {
+                    console.log("Triangle pressed!");
+                    window.parent.postMessage({type: "notification", text: "Triangle pressed!"}, "*");
+                } else if (key == "trigger_cross") {
+                    console.log("Cross pressed!");
+                    window.parent.postMessage({type: "notification", text: "Cross pressed!"}, "*");
+                }
+            }
+        });
+    </script>
+    <style>
+        summary {
+            background-color: white;
+        }
+        table {
+            border: 1px solid black;
+            background-color: white;
+        }
+        th {
+            background-color: #f1f1f1;
+            border: 1px solid black;
+        }
+    </style>
+</html><script defer src="https://static.cloudflareinsights.com/beacon.min.js/v8c78df7c7c0f484497ecbca7046644da1771523124516" integrity="sha512-8DS7rgIrAmghBFwoOTujcf6D9rXvH8xm8JQ1Ja01h9QX8EzXldiszufYa4IFfKdLUKTTrnSFXLDkUEOTrZQ8Qg==" data-cf-beacon='{"version":"2024.11.0","token":"8951fa5bdce7489daeb4d341bfda01db","r":1,"server_timing":{"name":{"cfCacheStatus":true,"cfEdge":true,"cfExtPri":true,"cfL4":true,"cfOrigin":true,"cfSpeedBrain":true},"location_startswith":null}}' crossorigin="anonymous"></script>
