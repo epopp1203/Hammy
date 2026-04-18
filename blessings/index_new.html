@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8" />
+	<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+	<title>Blessing Auto Opener - New</title>
+	<link rel="stylesheet" href="style_new.css" />
+</head>
+<body>
+	<div id="tracker" role="region" aria-label="Blessing opener panel">
+		<div class="header-block">
+			<div class="header">Blessing Auto Opener</div>
+			<p class="subheader">Modern panel variant</p>
+		</div>
+
+		<section class="panel-section" aria-label="Inventory">
+			<div class="section-title">Inventory</div>
+			<div class="count-grid">
+				<div class="count">
+					<span class="count-label">Series 1</span>
+					<span id="count-s1" class="count-value">0</span>
+				</div>
+				<div class="count">
+					<span class="count-label">Series 2</span>
+					<span id="count-s2" class="count-value">0</span>
+				</div>
+				<div class="count">
+					<span class="count-label">Series 3</span>
+					<span id="count-s3" class="count-value">0</span>
+				</div>
+				<div class="count">
+					<span class="count-label">Cursed Dice</span>
+					<span id="count-cursed" class="count-value warning">0</span>
+				</div>
+			</div>
+		</section>
+
+		<section class="panel-section" aria-label="Settings">
+			<div class="section-title">Automation</div>
+			<label class="checkbox" for="auto-redeem">
+				<input type="checkbox" id="auto-redeem" />
+				Auto Redeem Blessings
+			</label>
+			<label class="checkbox" for="auto-delete">
+				<input type="checkbox" id="auto-delete" />
+				Auto Delete Failed Blessings
+			</label>
+		</section>
+
+		<section class="panel-section" aria-label="Controls">
+			<div class="section-title">Actions</div>
+			<button id="start-btn">Start Opening</button>
+			<button id="stop-btn" style="display:none;">Stop Opening</button>
+			<button id="redeem-btn" class="alt">Redeem Blessings</button>
+		</section>
+	</div>
+
+	<script src="script.js"></script>
+</body>
+</html>

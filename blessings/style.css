@@ -10,7 +10,7 @@ body {
   position: fixed;
   top: 100px;
   left: 100px;
-  width: 300px;
+  width: 308px;
   z-index: 9999;
   cursor: move;
   user-select: none;
@@ -21,7 +21,7 @@ body {
 }
 
 #tracker.card {
-  background: rgba(33, 37, 41, 0.85) !important;
+  background: linear-gradient(180deg, rgba(26, 33, 41, 0.92), rgba(19, 24, 30, 0.9)) !important;
   border: 1px solid rgba(108, 117, 125, 0.3) !important;
   box-shadow: 
     0 20px 40px rgba(0, 0, 0, 0.3),
@@ -30,27 +30,59 @@ body {
 }
 
 .card-header {
-  background: rgba(52, 58, 64, 0.6) !important;
+  background: rgba(52, 58, 64, 0.45) !important;
   border-bottom: 1px solid rgba(108, 117, 125, 0.3) !important;
+}
+
+.tracker-subtitle {
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 
 .card-body {
   background: transparent !important;
 }
 
+.section-label {
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
 /* Count cards styling */
 .count .card {
   background: rgba(108, 117, 125, 0.15) !important;
   border: 1px solid rgba(108, 117, 125, 0.2) !important;
+  transition: transform 0.18s ease, background-color 0.18s ease;
 }
 
-/* Remove count update animation */
+.count .card:hover {
+  background: rgba(108, 117, 125, 0.22) !important;
+  transform: translateY(-1px);
+}
+
+.count.updated .card {
+  animation: pulse-card 0.25s ease;
+}
 
 /* Button enhancements */
 .btn {
   border: none !important;
   font-weight: 500;
   letter-spacing: 0.5px;
+  transition: filter 0.15s ease, transform 0.15s ease;
+}
+
+.btn:hover {
+  filter: brightness(1.07);
+  transform: translateY(-1px);
+}
+
+.btn:focus-visible,
+.form-check-input:focus-visible {
+  outline: 2px solid rgba(13, 202, 240, 0.7);
+  outline-offset: 1px;
 }
 
 .btn-success {
@@ -128,9 +160,10 @@ body {
 /* Responsive adjustments */
 @media (max-width: 576px) {
   #tracker {
-    width: 280px;
-    top: 20px;
-    left: 20px;
+    width: calc(100vw - 28px);
+    max-width: 330px;
+    top: 14px;
+    left: 14px;
   }
   
   .card-body {
@@ -138,22 +171,22 @@ body {
   }
 }
 
-/* Scrollbar for the entire UI */
-::-webkit-scrollbar {
+/* Scrollbar scoped to this UI */
+#tracker ::-webkit-scrollbar {
   width: 6px;
 }
 
-::-webkit-scrollbar-track {
+#tracker ::-webkit-scrollbar-track {
   background: rgba(255, 255, 255, 0.1);
   border-radius: 3px;
 }
 
-::-webkit-scrollbar-thumb {
+#tracker ::-webkit-scrollbar-thumb {
   background: rgba(13, 202, 240, 0.6);
   border-radius: 3px;
 }
 
-::-webkit-scrollbar-thumb:hover {
+#tracker ::-webkit-scrollbar-thumb:hover {
   background: rgba(13, 202, 240, 0.8);
 }
 
@@ -166,4 +199,10 @@ body {
   transform: none !important;
   box-shadow: none !important;
   cursor: not-allowed;
+}
+
+@keyframes pulse-card {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.02); }
+  100% { transform: scale(1); }
 }

@@ -11,27 +11,38 @@
   <div class="dashboard-container" id="draggableWindow">
     <div class="dashboard-header">
       <div class="header-content">
-        <div class="header-title">
-          <i class="fas fa-pickaxe"></i>
-          <span>Mining Dashboard</span>
+        <div class="header-top">
+          <div class="header-title">
+            <i class="fas fa-pickaxe"></i>
+            <span>Mining Helper Reborn</span>
+          </div>
+          <div id="minimized-stats" class="minimized-stats"></div>
         </div>
-        <div id="minimized-stats" class="minimized-stats"></div>
-        <div class="header-actions">
-          <button class="btn-autoexchange active" id="autoExchangeBtn" title="Auto-Exchange: On">
-            <i class="fas fa-sync-alt"></i>
-          </button>
-          <button class="btn-opacity" id="opacityBtn" title="Cycle Opacity">
-            <i class="fas fa-adjust"></i>
-          </button>
-          <button class="btn-mute" id="muteBtn" title="Mute Alert">
-            <i class="fas fa-volume-up"></i>
-          </button>
-          <button class="btn-layout" id="layoutBtn" title="Toggle Layout">
-            <i class="fas fa-arrows-alt-h"></i>
-          </button>
-          <button class="btn-minimize" id="minimizeBtn">
-            <i class="fas fa-minus"></i>
-          </button>
+        <div class="header-bottom">
+          <div id="data-status" class="data-status stale" title="Data Health: Waiting for updates">Waiting</div>
+          <div class="header-actions">
+            <button class="btn-autoexchange active" id="autoExchangeBtn" title="Auto Exchange" data-tooltip="Auto Exchange">
+              <i class="fas fa-sync-alt"></i>
+            </button>
+            <button class="btn-opacity" id="opacityBtn" title="Opacity: Cycle panel transparency" data-tooltip="Opacity: Cycle panel transparency">
+              <i class="fas fa-adjust"></i>
+            </button>
+            <button class="btn-mute" id="muteBtn" title="Sound" data-tooltip="Sound">
+              <i class="fas fa-volume-up"></i>
+            </button>
+            <button class="btn-layout" id="layoutBtn" title="Layout: Toggle vertical/horizontal" data-tooltip="Layout: Toggle vertical/horizontal">
+              <i class="fas fa-arrows-alt-h"></i>
+            </button>
+            <button class="btn-reset" id="resetSessionBtn" title="Reset: Clear session stats" data-tooltip="Reset: Clear session stats">
+              <i class="fas fa-rotate-left"></i>
+            </button>
+            <button class="btn-copy" id="copySummaryBtn" title="Copy: Session summary" data-tooltip="Copy: Session summary">
+              <i class="fas fa-copy"></i>
+            </button>
+            <button class="btn-minimize" id="minimizeBtn" title="Toggle Minimize" data-tooltip="Toggle Minimize">
+              <i class="fas fa-minus"></i>
+            </button>
+          </div>
         </div>
       </div>
     </div>

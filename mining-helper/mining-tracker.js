@@ -12,6 +12,7 @@ let lastWeight = null;
 let lastMaxWeight = null;
 let lastInventoryObj = null;
 let sessionStartTime = null;
+let sessionTimerId = null;
 let isMinimized = false;
 let isHorizontal = false;
 let sessionTotalMined = 0;
@@ -20,6 +21,8 @@ let hasInitialized = false;
 let inventoryAlertTriggered = false;
 let INVENTORY_ALERT_THRESHOLD = parseInt(localStorage.getItem("miningTracker_threshold")) || 95;
 let isMuted = localStorage.getItem("miningTracker_muted") === "true";
+let lastAlertPlayedAt = 0;
+const ALERT_COOLDOWN_MS = 25000;
 
 // Session persistence
 const SESSION_TTL_MS = 2 * 60 * 60 * 1000;
@@ -41,6 +44,10 @@ let hudDebounceTimer = null;
 
 // Waiting state
 let waitingStateTimer = null;
+let lastDataUpdateAt = 0;
+let dataHealthTimerId = null;
+const DATA_DELAYED_MS = 5000;
+const DATA_STALE_MS = 15000;
 
 // NEW: one-shot initial request + capped retry
 let hasRequestedInitialData = false;
@@ -66,6 +73,44 @@ let dragStartX = 0;
 let dragStartY = 0;
 let windowStartX = 0;
 let windowStartY = 0;
+
+function coerceMenuOpen(value) {
+  if (typeof value === "boolean") return value;
+  if (typeof value === "number") return value !== 0;
+  if (typeof value === "string") {
+    const normalized = value.trim().toLowerCase();
+    if (normalized === "true" || normalized === "1") return true;
+    if (normalized === "false" || normalized === "0" || normalized === "") return false;
+  }
+  return Boolean(value);
+}
+
+function normalizeMenuChoices(value) {
+  if (Array.isArray(value)) return value;
+  if (typeof value === "string") {
+    try {
+      const parsed = JSON.parse(value);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  }
+  return [];
+}
+
+function parseInventoryValue(rawValue) {
+  if (!rawValue) return null;
+  if (typeof rawValue === "object") return rawValue;
+  if (typeof rawValue === "string") {
+    try {
+      const parsed = JSON.parse(rawValue);
+      return parsed && typeof parsed === "object" ? parsed : null;
+    } catch {
+      return null;
+    }
+  }
+  return null;
+}
 
 function initializeDragging() {
   const draggableWindow = document.getElementById("draggableWindow");
@@ -121,13 +166,15 @@ function toggleLayout(save = true) {
     container.classList.add("horizontal");
     if (layoutBtn) {
       layoutBtn.innerHTML = '<i class="fas fa-arrows-alt-v"></i>';
-      layoutBtn.title = "Switch to Vertical";
+      layoutBtn.title = "Layout: Toggle vertical/horizontal";
+      layoutBtn.setAttribute("data-tooltip", "Layout: Horizontal now");
     }
   } else {
     container.classList.remove("horizontal");
     if (layoutBtn) {
       layoutBtn.innerHTML = '<i class="fas fa-arrows-alt-h"></i>';
-      layoutBtn.title = "Switch to Horizontal";
+      layoutBtn.title = "Layout: Toggle vertical/horizontal";
+      layoutBtn.setAttribute("data-tooltip", "Layout: Vertical now");
     }
   }
   
@@ -223,7 +270,8 @@ function toggleUI(visible) {
 }
 
 function startSessionTimer() {
-  setInterval(updateSessionTime, 1000);
+  if (sessionTimerId) return;
+  sessionTimerId = setInterval(updateSessionTime, 1000);
 }
 
 function updateSessionTime() {
@@ -256,6 +304,9 @@ function playInventoryAlertSound() {
 
   if (isMuted) return; // Exit if muted
 
+  const now = Date.now();
+  if (now - lastAlertPlayedAt < ALERT_COOLDOWN_MS) return;
+
   const alertAudio = document.getElementById('alertSound');
 
   if (alertAudio) {
@@ -263,6 +314,8 @@ function playInventoryAlertSound() {
     alertAudio.currentTime = 0;
 
     alertAudio.play().catch(() => {});
+
+    lastAlertPlayedAt = now;
 
   }
 
@@ -322,12 +375,14 @@ function updateMuteUI() {
     muteBtn.classList.add("muted");
 
     icon.className = "fas fa-volume-mute";
+    muteBtn.setAttribute("data-tooltip", "Sound Muted");
 
   } else {
 
     muteBtn.classList.remove("muted");
 
     icon.className = "fas fa-volume-up";
+    muteBtn.setAttribute("data-tooltip", "Sound On");
 
   }
 
@@ -366,6 +421,156 @@ function loadSessionData() {
   } catch {}
 }
 
+function resetSessionMetrics() {
+  sessionStartTime = Date.now();
+  sessionTotalMined = 0;
+  lastTotalOre = 0;
+  sessionExchangeCount = 0;
+  lastIronVoucherCount = null;
+  lastCopperVoucherCount = null;
+
+  for (const ore of ORE_KEYS) {
+    oreLog[ore] = [];
+    hasFirstGain[ore] = false;
+  }
+
+  try {
+    localStorage.removeItem("miningTracker_session");
+  } catch {}
+
+  const exchEl = document.getElementById("total-exchanges");
+  const minedEl = document.getElementById("total-mined");
+  const vouchersEl = document.getElementById("total-vouchers");
+  const sessionTimeEl = document.getElementById("session-time");
+
+  if (exchEl) exchEl.textContent = "0";
+  if (minedEl) minedEl.textContent = "0";
+  if (vouchersEl) vouchersEl.textContent = "0";
+  if (sessionTimeEl) sessionTimeEl.textContent = "00:00:00";
+
+  weightHistory.length = 0;
+  saveSessionData();
+}
+
+function getSessionSummaryText() {
+  const now = Date.now();
+  const elapsed = sessionStartTime ? now - sessionStartTime : 0;
+  const hours = Math.floor(elapsed / 3600000);
+  const minutes = Math.floor((elapsed % 3600000) / 60000);
+  const seconds = Math.floor((elapsed % 60000) / 1000);
+
+  const copperOre = lastInventoryObj?.mining_copper?.amount ?? 0;
+  const ironOre = lastInventoryObj?.mining_iron?.amount ?? 0;
+  const copperVouchers = lastInventoryObj?.mining_token_copper?.amount ?? 0;
+  const ironVouchers = lastInventoryObj?.mining_token_iron?.amount ?? 0;
+
+  return [
+    "Mining Dashboard Session Summary",
+    `Session Time: ${hours.toString().padStart(2, "0")}:${minutes.toString().padStart(2, "0")}:${seconds.toString().padStart(2, "0")}`,
+    `Total Mined: ${(sessionTotalMined + copperOre + ironOre).toLocaleString()}`,
+    `Current Ore - Copper: ${copperOre.toLocaleString()}, Iron: ${ironOre.toLocaleString()}`,
+    `Total Vouchers: ${(copperVouchers + ironVouchers).toLocaleString()}`,
+    `Exchanges: ${sessionExchangeCount.toLocaleString()}`
+  ].join("\n");
+}
+
+async function copySessionSummary() {
+  const copyBtn = document.getElementById("copySummaryBtn");
+  const text = getSessionSummaryText();
+  let copied = false;
+
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    try {
+      await navigator.clipboard.writeText(text);
+      copied = true;
+    } catch {}
+  }
+
+  if (!copied) {
+    const textarea = document.createElement("textarea");
+    textarea.value = text;
+    textarea.style.position = "fixed";
+    textarea.style.opacity = "0";
+    document.body.appendChild(textarea);
+    textarea.focus();
+    textarea.select();
+    try {
+      copied = document.execCommand("copy");
+    } catch {
+      copied = false;
+    }
+    document.body.removeChild(textarea);
+  }
+
+  if (copyBtn) {
+    copyBtn.title = copied
+      ? "Copy: Summary copied"
+      : "Copy: Clipboard blocked";
+    copyBtn.setAttribute(
+      "data-tooltip",
+      copied
+        ? "Copy: Summary copied"
+        : "Copy: Clipboard blocked"
+    );
+  }
+
+  if (copied) {
+    window.parent.postMessage({ type: "notification", text: "Mining summary copied to clipboard." }, "*");
+  }
+}
+
+function initializeSessionButtons() {
+  const resetBtn = document.getElementById("resetSessionBtn");
+  if (resetBtn) {
+    resetBtn.addEventListener("click", () => {
+      resetSessionMetrics();
+      if (lastWeight !== null && lastMaxWeight !== null && lastInventoryObj) {
+        updateHUD(lastWeight, lastMaxWeight);
+      }
+      resetBtn.title = "Reset: Session reset";
+      resetBtn.setAttribute("data-tooltip", "Reset: Session reset");
+      window.parent.postMessage({ type: "notification", text: "Mining session metrics reset." }, "*");
+    });
+  }
+
+  const copyBtn = document.getElementById("copySummaryBtn");
+  if (copyBtn) {
+    copyBtn.addEventListener("click", () => {
+      copySessionSummary();
+    });
+  }
+}
+
+function updateDataHealthStatus() {
+  const statusEl = document.getElementById("data-status");
+  if (!statusEl) return;
+
+  const ageMs = lastDataUpdateAt ? (Date.now() - lastDataUpdateAt) : Number.POSITIVE_INFINITY;
+
+  statusEl.classList.remove("live", "delayed", "stale");
+  if (ageMs < DATA_DELAYED_MS) {
+    statusEl.classList.add("live");
+    statusEl.textContent = "Live";
+    statusEl.title = "Data Health: receiving fresh updates";
+  } else if (ageMs < DATA_STALE_MS) {
+    statusEl.classList.add("delayed");
+    statusEl.textContent = "Delayed";
+    statusEl.title = "Data Health: updates slowed, waiting for next payload";
+  } else {
+    statusEl.classList.add("stale");
+    statusEl.textContent = hasInitialized ? "Stale" : "Waiting";
+    statusEl.title = hasInitialized
+      ? "Data Health: no update recently, data may be stale"
+      : "Data Health: waiting for initial data";
+  }
+}
+
+function startDataHealthMonitor() {
+  if (dataHealthTimerId) return;
+  updateDataHealthStatus();
+  dataHealthTimerId = setInterval(updateDataHealthStatus, 1000);
+}
+
 function showSessionSummary() {
   const elapsed = Date.now() - sessionStartTime;
   const hours = Math.floor(elapsed / 3600000);
@@ -394,8 +599,7 @@ function updateMinimizedStats() {
     ? Math.round((lastWeight / lastMaxWeight) * 100)
     : "--";
   const cu = lastInventoryObj?.mining_copper?.amount ?? 0;
-  const fe = lastInventoryObj?.mining_iron?.amount ?? 0;
-  stats.textContent = `Inv: ${pct}%  ·  Cu: ${cu}  ·  Fe: ${fe}`;
+  stats.textContent = `${pct}% ${cu}`;
 }
 
 function updateInventoryETA(weight, maxWeight) {
@@ -443,10 +647,12 @@ function updateAutoExchangeUI() {
   if (!btn) return;
   if (autoExchangeEnabled) {
     btn.classList.add("active");
-    btn.title = "Auto-Exchange: On";
+    btn.title = "Auto On";
+    btn.setAttribute("data-tooltip", "Auto On");
   } else {
     btn.classList.remove("active");
-    btn.title = "Auto-Exchange: Off";
+    btn.title = "Auto Off";
+    btn.setAttribute("data-tooltip", "Auto Off");
   }
 }
 
@@ -499,13 +705,14 @@ function updateHUD(weight, maxWeight) {
 
   const roundedWeight = weight !== null ? weight.toFixed(1) : "--";
   const roundedMax = maxWeight !== null ? maxWeight.toFixed(1) : "--";
-  const invPercentValue = (weight != null && maxWeight != null) ? ((weight / maxWeight) * 100).toFixed(1) : "--";
+  const hasValidWeight = (weight != null && maxWeight != null && maxWeight > 0);
+  const invPercentValue = hasValidWeight ? ((weight / maxWeight) * 100).toFixed(1) : "--";
   
   if (invCurrent) invCurrent.textContent = roundedWeight;
   if (invMax) invMax.textContent = roundedMax;
   if (invPercent) invPercent.textContent = invPercentValue + "%";
   
-  if (weight != null && maxWeight != null) {
+  if (hasValidWeight) {
     const percentage = (weight / maxWeight) * 100;
     if (inventoryProgress) {
       inventoryProgress.style.width = percentage + "%";
@@ -706,12 +913,22 @@ let isExchanging = false;
 let lastReopenTime = 0;
 let hasReopenedForLeftovers = false;
 const REOPEN_COOLDOWN = 5000;
+const MAX_REOPEN_COOLDOWN = 30000;
+let reopenCooldownMs = REOPEN_COOLDOWN;
+let reopenAttemptCount = 0;
 
 function shouldReopenMenu() {
   const now = Date.now();
-  if (now - lastReopenTime < REOPEN_COOLDOWN) return false;
+  if (now - lastReopenTime < reopenCooldownMs) return false;
   lastReopenTime = now;
+  reopenAttemptCount += 1;
+  reopenCooldownMs = Math.min(REOPEN_COOLDOWN * Math.pow(2, Math.max(0, reopenAttemptCount - 1)), MAX_REOPEN_COOLDOWN);
   return true;
+}
+
+function resetReopenBackoff() {
+  reopenAttemptCount = 0;
+  reopenCooldownMs = REOPEN_COOLDOWN;
 }
 
 async function tryAutoVoucherExchange() {
@@ -814,8 +1031,18 @@ function requestInitialData() {
 }
 
 window.addEventListener("message", (event) => {
-  const data = event.data?.data;
+  const envelope = event.data;
+  if (!envelope || typeof envelope !== "object") return;
+
+  // Tycoon payloads can arrive in different shapes depending on bridge source.
+  const data = (envelope.data && typeof envelope.data === "object")
+    ? envelope.data
+    : (envelope.payload && typeof envelope.payload === "object")
+      ? envelope.payload
+      : envelope;
   if (!data || typeof data !== 'object') return;
+
+  lastDataUpdateAt = Date.now();
 
   if (!hasInitialized) {
     hasInitialized = true;
@@ -827,20 +1054,18 @@ window.addEventListener("message", (event) => {
 
   for (const [key, value] of Object.entries(data)) {
     if (key === 'menu_choices') {
-      try {
-        window.state.cache[key] = JSON.parse(value ?? '[]');
-      } catch {
-        window.state.cache[key] = [];
-      }
+      window.state.cache[key] = normalizeMenuChoices(value);
     } else if (key === 'menu_open') {
-      window.state.cache[key] = Boolean(value);
+      const menuOpen = coerceMenuOpen(value);
+      window.state.cache[key] = menuOpen;
 
-      if (value === false) {
+      if (!menuOpen) {
         isExchanging = false;
         hasReopenedForLeftovers = false;
       }
 
-      if (value === true) {
+      if (menuOpen) {
+        resetReopenBackoff();
         setTimeout(() => tryAutoVoucherExchange(), 100);
       }
     } else {
@@ -852,9 +1077,10 @@ window.addEventListener("message", (event) => {
     setTimeout(() => tryAutoVoucherExchange(), 100);
   }
 
-  const job = data.job?.toLowerCase();
-  if (job) {
-    if (job !== REQUIRED_JOB) {
+  const rawJob = data.job ?? data.job_name ?? data.job_title ?? data.jobName ?? data.jobTitle;
+  const normalizedJob = typeof rawJob === "string" ? rawJob.trim().toLowerCase() : "";
+  if (normalizedJob) {
+    if (!normalizedJob.includes(REQUIRED_JOB)) {
       isMinerJob = false;
       toggleUI(false);
       return;
@@ -868,11 +1094,13 @@ window.addEventListener("message", (event) => {
   if (typeof data.max_weight === "number") lastMaxWeight = data.max_weight;
 
   let invObj = null;
-  if (data.inventory) {
-    try {
-      invObj = typeof data.inventory === "string" ? JSON.parse(data.inventory) : data.inventory;
-      if (invObj) lastInventoryObj = invObj;
-    } catch {}
+  invObj = parseInventoryValue(data.inventory)
+    || parseInventoryValue(data?.cache?.inventory)
+    || parseInventoryValue(envelope.inventory)
+    || parseInventoryValue(envelope?.cache?.inventory);
+
+  if (invObj) {
+    lastInventoryObj = invObj;
   } else if (lastInventoryObj) {
     invObj = lastInventoryObj;
   }
@@ -939,7 +1167,11 @@ window.onload = () => {
 
   initializeOpacityBtn();
 
+  initializeSessionButtons();
+
   applyOpacity();
+
+  startDataHealthMonitor();
 
   const escapeListener = (e) => {
 

@@ -24,7 +24,7 @@ body {
   box-shadow: 0 8px 20px rgba(0, 0, 0, 0.4);
   color: #ffffff;
   z-index: 9999;
-  overflow: hidden;
+  overflow: visible;
   will-change: transform;
   transition: width 0.3s ease, height 0.3s ease;
 }
@@ -35,14 +35,14 @@ body {
   background: rgba(255, 255, 255, 0.1);
   border: none;
   border-radius: 4px;
-  width: 20px;
-  height: 20px;
+  width: 22px;
+  height: 22px;
   display: flex;
   align-items: center;
   justify-content: center;
   color: #cbd5e1;
   cursor: pointer;
-  font-size: 10px;
+  font-size: 11px;
 }
 
 .btn-mute:hover {
@@ -89,7 +89,7 @@ body {
   background: transparent;
   color: #ffffff;
   border: none;
-  font-size: 10px;
+  font-size: 11px;
   font-family: inherit;
   cursor: pointer;
   outline: none;
@@ -163,27 +163,32 @@ body {
 }
 
 .bxp-simple .bxp-value {
-  font-size: 16px;
+  font-size: 17px;
   font-weight: 700;
   color: #ffffff;
   margin-bottom: 2px;
 }
 
 .bxp-simple .bxp-label {
-  font-size: 10px;
+  font-size: 11px;
   color: #94a3b8;
   text-transform: uppercase;
   letter-spacing: 0.5px;
 }
 
 .dashboard-container.minimized {
-  height: 40px;
-  overflow: hidden;
+  width: 370px;
+  height: 64px;
+  overflow: visible;
 }
 
 .dashboard-container.horizontal.minimized {
-  height: 40px;
+  height: 64px;
   width: 560px;
+}
+
+.dashboard-container.minimized .dashboard-content {
+  display: none;
 }
 
 .dashboard-header {
@@ -192,21 +197,81 @@ body {
   padding: 8px 12px;
   cursor: move;
   user-select: none;
+  overflow: visible;
 }
 
 .header-content {
   display: flex;
-  justify-content: space-between;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.header-top {
+  display: flex;
   align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.header-bottom {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  padding-top: 2px;
+  padding-bottom: 2px;
+}
+
+.data-status {
+  min-width: 46px;
+  text-align: center;
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  padding: 2px 5px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  color: #dbeafe;
+  background: rgba(59, 130, 246, 0.2);
+  flex-shrink: 0;
+}
+
+.data-status.live {
+  color: #bbf7d0;
+  background: rgba(16, 185, 129, 0.18);
+  border-color: rgba(16, 185, 129, 0.35);
+}
+
+.data-status.delayed {
+  color: #fde68a;
+  background: rgba(245, 158, 11, 0.18);
+  border-color: rgba(245, 158, 11, 0.35);
+}
+
+.data-status.stale {
+  color: #fecaca;
+  background: rgba(239, 68, 68, 0.18);
+  border-color: rgba(239, 68, 68, 0.35);
 }
 
 .header-title {
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 6px;
   font-weight: 600;
-  font-size: 14px;
+  font-size: 15px;
   color: #e2e8f0;
+  min-width: 0;
+  text-align: center;
+}
+
+.header-title span {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .header-title i {
@@ -216,28 +281,97 @@ body {
 
 .header-actions {
   display: flex;
-  gap: 6px;
+  gap: 4px;
+  position: relative;
+  flex-shrink: 0;
+}
+
+.header-actions > button {
+  width: 22px;
+  height: 22px;
+  font-size: 11px;
 }
 
 .btn-minimize,
-.btn-layout {
+.btn-layout,
+.btn-reset,
+.btn-copy {
   background: rgba(255, 255, 255, 0.1);
   border: none;
   border-radius: 4px;
-  width: 20px;
-  height: 20px;
+  width: 22px;
+  height: 22px;
   display: flex;
   align-items: center;
   justify-content: center;
   color: #cbd5e1;
   cursor: pointer;
-  font-size: 10px;
+  font-size: 11px;
 }
 
 .btn-minimize:hover,
-.btn-layout:hover {
+.btn-layout:hover,
+.btn-reset:hover,
+.btn-copy:hover {
   background: rgba(255, 255, 255, 0.2);
   color: #ffffff;
+}
+
+.header-actions button {
+  position: relative;
+}
+
+.header-actions button[data-tooltip]::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  top: auto;
+  bottom: calc(100% + 8px);
+  left: 0;
+  right: auto;
+  transform: translateX(0);
+  width: max-content;
+  max-width: min(220px, calc(100vw - 32px));
+  min-width: 140px;
+  padding: 9px 12px;
+  border-radius: 8px;
+  background: linear-gradient(180deg, rgba(11, 20, 36, 0.98), rgba(15, 28, 48, 0.98));
+  border: 1px solid rgba(125, 167, 219, 0.45);
+  color: #e6f0ff;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.35;
+  letter-spacing: 0.01em;
+  text-align: left;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  hyphens: auto;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(23, 42, 73, 0.55) inset;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  z-index: 10001;
+  transition: opacity 0.12s ease, transform 0.12s ease;
+}
+
+/* Only far-right buttons open tooltip inward to the left. */
+.header-actions button:nth-last-child(-n + 3)[data-tooltip]::after {
+  left: auto;
+  right: 0;
+}
+
+.header-actions button[data-tooltip]:hover::after {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(-1px);
+}
+
+.btn-reset {
+  color: #fca5a5;
+}
+
+.btn-copy {
+  color: #a7f3d0;
 }
 
 .dashboard-content {
@@ -256,10 +390,6 @@ body {
   flex-direction: column;
   flex: 0 0 140px;
   gap: 2px; 
-}
-
-.inventory-overview {
-  margin-bottom: 0;
 }
 
 .inventory-card {
@@ -362,12 +492,12 @@ body {
 
 .inventory-text {
   font-weight: 600;
-  font-size: 13px;
+  font-size: 14px;
   color: #ffffff;
 }
 
 .inventory-capacity {
-  font-size: 11px;
+  font-size: 12px;
   color: #cbd5e1;
 }
 
@@ -439,7 +569,7 @@ body {
 }
 
 .ore-subtitle {
-  font-size: 9px;
+  font-size: 10px;
   color: #94a3b8;
 }
 
@@ -457,7 +587,7 @@ body {
 }
 
 .main-stat .stat-value {
-  font-size: 16px;
+  font-size: 17px;
   font-weight: 700;
   color: #ffffff;
   margin-bottom: 2px;
@@ -474,14 +604,14 @@ body {
 }
 
 .stat-value {
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 600;
   color: #ffffff;
   margin-bottom: 1px;
 }
 
 .stat-label {
-  font-size: 8px;
+  font-size: 9px;
   color: #94a3b8;
   text-transform: uppercase;
   letter-spacing: 0.5px;
@@ -545,14 +675,14 @@ body {
 }
 
 .metric-value {
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
   color: #ffffff;
   margin-bottom: 1px;
 }
 
 .metric-label {
-  font-size: 8px;
+  font-size: 9px;
   color: #94a3b8;
   text-transform: uppercase;
   letter-spacing: 0.5px;
@@ -616,7 +746,7 @@ body {
   display: none;
   flex: 1;
   text-align: center;
-  font-size: 10px;
+  font-size: 11px;
   color: #94a3b8;
   padding: 0 8px;
   white-space: nowrap;
@@ -626,15 +756,98 @@ body {
 
 .dashboard-container.minimized .minimized-stats {
   display: block;
+  font-size: 11px;
+  font-weight: 500;
+  color: #d1def0;
+  text-align: right;
+  max-width: none;
+  flex: 0 0 82px;
+  margin-left: 8px;
+  overflow: visible;
+  text-overflow: clip;
+  white-space: nowrap;
 }
 
 .dashboard-container.minimized .header-title span {
+  display: inline;
+}
+
+.dashboard-container.minimized .header-content {
+  gap: 4px;
+}
+
+.dashboard-container.minimized .header-top {
+  justify-content: space-between;
+  align-items: center;
+}
+
+.dashboard-container.minimized .header-title {
+  font-size: 15px;
+  flex: 1 1 auto;
+  min-width: 0;
+  max-width: none;
+}
+
+.dashboard-container.minimized .header-bottom {
+  padding-top: 0;
+  padding-bottom: 0;
+  gap: 4px;
+}
+
+.dashboard-container.minimized .header-actions {
+  gap: 3px;
+}
+
+.dashboard-container.minimized .header-actions > button,
+.dashboard-container.minimized .btn-minimize,
+.dashboard-container.minimized .btn-layout,
+.dashboard-container.minimized .btn-reset,
+.dashboard-container.minimized .btn-copy,
+.dashboard-container.minimized .btn-autoexchange,
+.dashboard-container.minimized .btn-opacity,
+.dashboard-container.minimized .btn-mute {
+  width: 20px;
+  height: 20px;
+  font-size: 10px;
+}
+
+.dashboard-container.minimized .data-status {
   display: none;
+}
+
+.dashboard-container.minimized #opacityBtn,
+.dashboard-container.minimized #layoutBtn,
+.dashboard-container.minimized #resetSessionBtn,
+.dashboard-container.minimized #copySummaryBtn {
+  display: none;
+}
+
+.dashboard-container.minimized .header-actions button[data-tooltip]::after {
+  top: calc(100% + 6px);
+  bottom: auto;
+  left: 0;
+  right: auto;
+  transform: translateX(0);
+  font-size: 11px;
+  min-width: 0;
+  max-width: min(150px, calc(100vw - 24px));
+  padding: 6px 8px;
+  white-space: nowrap;
+}
+
+.dashboard-container.minimized .header-actions button:nth-last-child(-n + 3)[data-tooltip]::after {
+  left: 0;
+  right: auto;
+}
+
+.dashboard-container.minimized .header-actions button:last-child[data-tooltip]::after {
+  left: 0;
+  right: auto;
 }
 
 /* ── Inventory ETA ── */
 .inv-eta {
-  font-size: 10px;
+  font-size: 11px;
   color: #94a3b8;
   font-weight: 500;
   flex: 1;
@@ -657,7 +870,7 @@ body {
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: 10px;
+  font-size: 11px;
   color: #94a3b8;
   padding: 4px 2px;
 }
@@ -709,14 +922,14 @@ body {
   background: rgba(241, 6, 6, 0.1);
   border: none;
   border-radius: 4px;
-  width: 20px;
-  height: 20px;
+  width: 22px;
+  height: 22px;
   display: flex;
   align-items: center;
   justify-content: center;
   color: #ff0000;
   cursor: pointer;
-  font-size: 10px;
+  font-size: 11px;
 }
 
 .btn-autoexchange:hover {
@@ -734,14 +947,14 @@ body {
   background: rgba(255, 255, 255, 0.1);
   border: none;
   border-radius: 4px;
-  width: 20px;
-  height: 20px;
+  width: 22px;
+  height: 22px;
   display: flex;
   align-items: center;
   justify-content: center;
   color: #cbd5e1;
   cursor: pointer;
-  font-size: 10px;
+  font-size: 11px;
 }
 
 .btn-opacity:hover {
