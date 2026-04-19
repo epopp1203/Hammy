@@ -12,6 +12,8 @@ const DEBUG_PANEL_LAYOUT_STORAGE_KEY = "pizzaJobDebugPanelLayout";
 const SETTINGS_STORAGE_KEY = "pizzaJobSettings";
 const VERBOSE_RAW_DEBUG_STORAGE_KEY = "pizzaJobVerboseRawDebug";
 const DEBUG_FILTER_STORAGE_KEY = "pizzaJobDebugFilterMode";
+const UI_MIN_FONT_SCALE = 0.85;
+const UI_MAX_FONT_SCALE = 1.6;
 const INTEGRATION_POLL_INTERVAL_MS = 1500;
 const INTEGRATION_IDLE_POLL_INTERVAL_MS = 5000;
 const INTEGRATION_HIDDEN_POLL_INTERVAL_MS = 9000;
@@ -20,6 +22,7 @@ const NUI_IDLE_POLL_INTERVAL_MS = 6000;
 const NUI_HIDDEN_POLL_INTERVAL_MS = 10000;
 const USER_ACTIVITY_TIMEOUT_MS = 120000;
 const VEHICLE_TRUNK_REFRESH_COOLDOWN_MS = 800;
+const TRUNK_REOPEN_GUARD_DELAY_MS = 700;
 const TYCOON_OPEN_TRUNK_COMMANDS = ["rm_trunk", "rm_cabtrunk"];
 const DEBUG_PIN_XOR_KEY = 0x53;
 const DEBUG_PIN_OBFUSCATED = [106, 97, 101, 98, 106];
@@ -324,6 +327,10 @@ function createInitialTycoonTrunkState() {
 	};
 }
 
+function hasOwn(objectValue, key) {
+	return Object.prototype.hasOwnProperty.call(objectValue, key);
+}
+
 const state = {
 	orderId: generateRandomOrderId(),
 	order: createEmptyTrackedItemTable(),
@@ -428,6 +435,7 @@ let lastTycoonPromptSeenAt = 0;
 let lastFocusedTycoonPayloadSignature = "";
 let lastCircleTriggerValue = null;
 let hasSeenCircleTriggerValue = false;
+let lastCircleTriggerAt = 0;
 let lastAutoMissionMarkerSignature = "";
 let lastAutoMissionMarkerAttemptAt = 0;
 let lastChestSelectedDebugSignature = "";
@@ -589,6 +597,9 @@ function resetPizzaJobRuntimeState() {
 	lastInVehicleState = null;
 	lastTycoonPromptSeenAt = 0;
 	lastFocusedTycoonPayloadSignature = "";
+	lastCircleTriggerValue = null;
+	hasSeenCircleTriggerValue = false;
+	lastCircleTriggerAt = 0;
 	saveSettings();
 	render();
 
@@ -836,6 +847,8 @@ function normalizeButtonTooltipAttributes() {
 }
 
 const DEBUG_MAX_ENTRIES = 1000;
+const DEBUG_FILTER_MODES = ["trunk", "focused", "server", "all"];
+const DEFAULT_DEBUG_FILTER_MODE = "trunk";
 
 function isVerboseRawDebugEnabled() {
 	try {
@@ -854,21 +867,21 @@ function setVerboseRawDebugEnabled(enabled) {
 }
 
 function getDebugFilterMode() {
-	const selectedValue = refs.debugFilterSelect?.value;
-	if (["focused", "server", "all"].includes(selectedValue)) {
+	const selectedValue = refs.debugFilterSelect ? refs.debugFilterSelect.value : undefined;
+	if (DEBUG_FILTER_MODES.includes(selectedValue)) {
 		return selectedValue;
 	}
 
 	try {
 		const stored = localStorage.getItem(DEBUG_FILTER_STORAGE_KEY);
-		return ["focused", "server", "all"].includes(stored) ? stored : "focused";
+		return DEBUG_FILTER_MODES.includes(stored) ? stored : DEFAULT_DEBUG_FILTER_MODE;
 	} catch {
-		return "focused";
+		return DEFAULT_DEBUG_FILTER_MODE;
 	}
 }
 
 function setDebugFilterMode(mode) {
-	const safeMode = ["focused", "server", "all"].includes(mode) ? mode : "focused";
+	const safeMode = DEBUG_FILTER_MODES.includes(mode) ? mode : DEFAULT_DEBUG_FILTER_MODE;
 	if (refs.debugFilterSelect) {
 		refs.debugFilterSelect.value = safeMode;
 	}
@@ -988,11 +1001,11 @@ function getFocusedTycoonPayloadSignature(data) {
 }
 
 function getDebugEntryTone(raw) {
-	if (raw?.type === "pizza-job-debug") {
+	if (raw && raw.type === "pizza-job-debug") {
 		return "action";
 	}
 
-	if (raw?.type === "data" && raw?.fromTycoonScript === true) {
+	if (raw && raw.type === "data" && raw.fromTycoonScript === true) {
 		return "server";
 	}
 
@@ -1029,6 +1042,105 @@ function isLikelyPostSuccessRootTrunkMenuPayload(data) {
 	return menuChoices.includes("put") && menuChoices.includes("take");
 }
 
+function hasAnyTrunkChestPayload(data) {
+	if (!data || typeof data !== "object" || Array.isArray(data)) {
+		return false;
+	}
+
+	return Object.keys(data).some((key) => key.startsWith("chest_"));
+}
+
+function isLikelyTrunkSignalPayload(data) {
+	if (!data || typeof data !== "object" || Array.isArray(data)) {
+		return false;
+	}
+
+	if ("trigger_circle" in data) {
+		return true;
+	}
+
+	if (hasAnyTrunkChestPayload(data)) {
+		return true;
+	}
+
+	if (typeof data.chest === "string") {
+		return true;
+	}
+
+	if (typeof data.notification === "string") {
+		const normalizedNotification = data.notification.toLowerCase();
+		if (normalizedNotification.includes("received") || normalizedNotification.includes("trunk")) {
+			return true;
+		}
+	}
+
+	if (typeof data.menu === "string") {
+		const normalizedMenu = data.menu.toLowerCase();
+		if (normalizedMenu.includes("trunk") || normalizedMenu.includes("take")) {
+			return true;
+		}
+	}
+
+	if (typeof data.menu_choice === "string") {
+		const normalizedChoice = cleanMenuChoiceLabel(data.menu_choice).toLowerCase();
+		if (normalizedChoice.includes("take") || normalizedChoice.includes("put")) {
+			return true;
+		}
+	}
+
+	if ("menu_choices" in data) {
+		const labels = parseMenuChoices(data.menu_choices)
+			.map((choice) => (Array.isArray(choice) ? cleanMenuChoiceLabel(choice[0]).toLowerCase() : ""))
+			.filter(Boolean);
+		if (labels.some((label) => label.includes("take") || label.includes("put") || label.includes("trunk"))) {
+			return true;
+		}
+	}
+
+	if (typeof data.trunkWeight === "number" || typeof data.trunkCapacity === "number") {
+		return true;
+	}
+
+	return false;
+}
+
+function getTrunkSignalPayloadSignature(data) {
+	if (!data || typeof data !== "object" || Array.isArray(data)) {
+		return "";
+	}
+
+	const signatureSource = {
+		menu_open: data.menu_open,
+		menu: data.menu,
+		menu_choice: data.menu_choice,
+		chest: data.chest,
+		notification: data.notification,
+		trunkWeight: data.trunkWeight,
+		trunkCapacity: data.trunkCapacity,
+		weight: data.weight
+	};
+
+	for (const key of Object.keys(data).sort()) {
+		if (key.startsWith("chest_")) {
+			signatureSource[key] = data[key];
+		}
+	}
+
+	if ("menu_choices" in data) {
+		signatureSource.menu_choices = data.menu_choices;
+	}
+
+	if ("inventory" in data) {
+		signatureSource.inventory = data.inventory;
+	}
+
+	try {
+		return JSON.stringify(signatureSource);
+	} catch {
+		return "";
+	}
+}
+
 function shouldSkipDebugPayload(raw) {
 	if (!raw || typeof raw !== "object") {
 		return false;
@@ -1049,6 +1161,18 @@ function shouldSkipDebugPayload(raw) {
 
 	if (raw.type !== "data" || raw.fromTycoonScript !== true) {
 		return true;
+	}
+
+	if (filterMode === "trunk") {
+		if (Array.isArray(raw.data) && raw.data.length === 0) {
+			return true;
+		}
+
+		if (!raw.data || typeof raw.data !== "object" || Array.isArray(raw.data)) {
+			return true;
+		}
+
+		return !isLikelyTrunkSignalPayload(raw.data);
 	}
 
 	if (filterMode === "focused" && wasRecentAnyTycoonTakeSuccess() && isLikelyPostSuccessRootTrunkMenuPayload(raw.data)) {
@@ -1103,16 +1227,19 @@ function debugLogMessage(raw) {
 	}
 
 	if (
-		getDebugFilterMode() === "focused" &&
-		raw?.type === "data" &&
-		raw?.fromTycoonScript === true &&
+		["focused", "trunk"].includes(getDebugFilterMode()) &&
+		raw &&
+		raw.type === "data" &&
+		raw.fromTycoonScript === true &&
 		raw.data &&
 		typeof raw.data === "object" &&
 		!Array.isArray(raw.data)
 	) {
 		const keys = Object.keys(raw.data);
 		if (keys.length > 20) {
-			const signature = getFocusedTycoonPayloadSignature(raw.data);
+			const mode = getDebugFilterMode();
+			const signature =
+				mode === "trunk" ? getTrunkSignalPayloadSignature(raw.data) : getFocusedTycoonPayloadSignature(raw.data);
 			if (signature && signature === lastFocusedTycoonPayloadSignature) {
 				return;
 			}
@@ -1306,11 +1433,11 @@ function loadSettings() {
 		if (typeof parsed.bgOpacity === "number") {
 			state.settings.bgOpacity = clamp(parsed.bgOpacity, 0, 1);
 		}
-		if (typeof parsed.theme === "string" && Object.hasOwn(UI_THEME_PRESETS, parsed.theme)) {
+		if (typeof parsed.theme === "string" && hasOwn(UI_THEME_PRESETS, parsed.theme)) {
 			state.settings.theme = parsed.theme;
 		}
 		if (typeof parsed.fontScale === "number") {
-			state.settings.fontScale = clamp(parsed.fontScale, 0.85, 1.35);
+			state.settings.fontScale = clamp(parsed.fontScale, UI_MIN_FONT_SCALE, UI_MAX_FONT_SCALE);
 		}
 		if (typeof parsed.settingsDetached === "boolean") {
 			state.settings.settingsDetached = parsed.settingsDetached;
@@ -1368,11 +1495,31 @@ function applyThemePreset() {
 }
 
 function applyUIFontScale() {
-	const scale = clamp(state.settings.fontScale || 1, 0.85, 1.35);
+	const scale = clamp(state.settings.fontScale || 1, UI_MIN_FONT_SCALE, UI_MAX_FONT_SCALE);
 	document.documentElement.style.setProperty("--ui-font-scale", scale.toFixed(2));
 	if (refs.fontSizeValue) {
 		refs.fontSizeValue.textContent = `${Math.round(scale * 100)}%`;
 	}
+}
+
+function renderTrunkAlertBadge(lowCount) {
+	if (!refs.trunkAlertCount) {
+		return;
+	}
+
+	refs.trunkAlertCount.classList.remove("pill-alert-ok", "pill-alert-watch", "pill-alert-critical");
+
+	if (lowCount <= 0) {
+		refs.trunkAlertCount.textContent = "All Stock OK";
+		refs.trunkAlertCount.classList.add("pill-alert-ok");
+		refs.trunkAlertCount.setAttribute("aria-label", "All tracked trunk items are above low threshold");
+		return;
+	}
+
+	const isCritical = lowCount >= 3;
+	refs.trunkAlertCount.textContent = lowCount === 1 ? "1 Low Item" : `${lowCount} Low Items`;
+	refs.trunkAlertCount.classList.add(isCritical ? "pill-alert-critical" : "pill-alert-watch");
+	refs.trunkAlertCount.setAttribute("aria-label", `${lowCount} tracked trunk items are below low threshold`);
 }
 
 function positionDetachedSettingsPanel(useSavedPosition = true) {
@@ -1449,8 +1596,6 @@ function updateThresholdValue(input) {
 	input.value = String(nextValue);
 	saveSettings();
 	renderTrunk();
-	const lowCount = getLowStockItems().length;
-	refs.trunkAlertCount.textContent = `${lowCount} Low`;
 	showToast(`${itemName} low stock threshold set to ${nextValue}.`);
 }
 
@@ -1467,7 +1612,11 @@ function renderLowThresholdInputs() {
 				continue;
 			}
 			const item = input.dataset.thresholdItem;
-			const thresholdValue = state.settings.lowThresholdByItem[item] ?? 5;
+			const storedThresholdValue = state.settings.lowThresholdByItem[item];
+			const thresholdValue =
+				storedThresholdValue === null || storedThresholdValue === undefined
+					? 5
+					: storedThresholdValue;
 			input.value = String(thresholdValue);
 		}
 		return;
@@ -1477,7 +1626,9 @@ function renderLowThresholdInputs() {
 	for (const item of TRACKED_ITEMS) {
 		const row = document.createElement("label");
 		row.className = "setting-row";
-		const thresholdValue = state.settings.lowThresholdByItem[item] ?? 5;
+		const storedThresholdValue = state.settings.lowThresholdByItem[item];
+		const thresholdValue =
+			storedThresholdValue === null || storedThresholdValue === undefined ? 5 : storedThresholdValue;
 		row.innerHTML = `
 			<span>${item}</span>
 			<input
@@ -1642,7 +1793,8 @@ function normalizeHammyItemsArray(itemsArray) {
 			continue;
 		}
 
-		const entryName = entry.item?.name || entry.item?.id || entry.item?.vrpName || entry.name;
+		const entryItem = entry.item && typeof entry.item === "object" ? entry.item : null;
+		const entryName = (entryItem && (entryItem.name || entryItem.id || entryItem.vrpName)) || entry.name;
 		const amount = extractAmountValue(entry.amount);
 		if (typeof entryName !== "string" || amount === null) {
 			continue;
@@ -1666,16 +1818,16 @@ function resolveVehicleTrunkInventoryFromPayload(data) {
 
 	if (Array.isArray(parsedData.trunks)) {
 		const activeTrunk =
-			parsedData.trunks.find((entry) => entry?.active || entry?.isActive || entry?.inVehicle) ||
+			parsedData.trunks.find((entry) => entry && (entry.active || entry.isActive || entry.inVehicle)) ||
 			parsedData.trunks[0];
-		if (activeTrunk?.inventory && typeof activeTrunk.inventory === "object") {
+		if (activeTrunk && activeTrunk.inventory && typeof activeTrunk.inventory === "object") {
 			return { inventory: activeTrunk.inventory, source: "Hammy Vehicle trunk" };
 		}
 	}
 
 	if (Array.isArray(parsedData.storages)) {
 		const vehicleStorage = parsedData.storages.find((entry) => {
-			const typeValue = entry?.storage?.type;
+			const typeValue = entry && entry.storage && entry.storage.type;
 			if (typeof typeValue !== "string") {
 				return false;
 			}
@@ -1686,7 +1838,7 @@ function resolveVehicleTrunkInventoryFromPayload(data) {
 				normalizedType === "vehicle_trunk"
 			);
 		});
-		if (vehicleStorage?.items) {
+		if (vehicleStorage && vehicleStorage.items) {
 			const normalized = normalizeHammyItemsArray(vehicleStorage.items);
 			if (normalized) {
 				return { inventory: normalized, source: "Hammy Vehicle storage" };
@@ -2633,7 +2785,7 @@ function isVehicleInventoryContext(data) {
 		return false;
 	}
 
-	const storageType = data.storage?.type;
+	const storageType = data.storage && data.storage.type;
 	if (typeof storageType === "string") {
 		const normalizedType = storageType.toLowerCase();
 		if (["vehicle", "trunk", "vehicle_trunk"].includes(normalizedType)) {
@@ -2641,7 +2793,7 @@ function isVehicleInventoryContext(data) {
 		}
 	}
 
-	const storageId = data.storage?.id;
+	const storageId = data.storage && data.storage.id;
 	if (typeof storageId === "string") {
 		const normalizedId = storageId.toLowerCase();
 		if (normalizedId.startsWith("veh_") || normalizedId.includes("trunk")) {
@@ -2708,6 +2860,7 @@ function hasCircleTrigger(data) {
 		return false;
 	}
 
+	const now = Date.now();
 	const nextValue = data.trigger_circle;
 	if (!hasSeenCircleTriggerValue) {
 		hasSeenCircleTriggerValue = true;
@@ -2715,12 +2868,49 @@ function hasCircleTrigger(data) {
 		return false;
 	}
 
-	if (nextValue === lastCircleTriggerValue) {
-		return false;
+	const previousValue = lastCircleTriggerValue;
+	lastCircleTriggerValue = nextValue;
+
+	// Tycoon can emit trigger_circle as a changing numeric token per press.
+	if (typeof nextValue === "number" && Number.isFinite(nextValue)) {
+		const changed = nextValue !== previousValue;
+		const active = nextValue !== 0;
+		if (!changed || !active) {
+			return false;
+		}
+
+		if (now - lastCircleTriggerAt < 550) {
+			return false;
+		}
+
+		lastCircleTriggerAt = now;
+		return true;
 	}
 
-	lastCircleTriggerValue = nextValue;
-	return true;
+	const isActive =
+		typeof nextValue === "boolean"
+			? nextValue
+			: typeof nextValue === "string"
+				? !["", "0", "false", "off", "none", "null"].includes(nextValue.trim().toLowerCase())
+				: Boolean(nextValue);
+	const wasActive =
+		typeof previousValue === "boolean"
+			? previousValue
+			: typeof previousValue === "string"
+				? !["", "0", "false", "off", "none", "null"].includes(previousValue.trim().toLowerCase())
+				: Boolean(previousValue);
+
+	// Fire only on inactive -> active transitions to avoid duplicate triggers.
+	if (isActive && !wasActive) {
+		if (now - lastCircleTriggerAt < 550) {
+			return false;
+		}
+
+		lastCircleTriggerAt = now;
+		return true;
+	}
+
+	return false;
 }
 
 function shouldRefreshFromVehicleStateChange(nextState) {
@@ -2794,7 +2984,7 @@ function refreshVehicleTrunkInventory(reason, force = false) {
 	})
 		.then((response) => response.json())
 		.then((payload) => {
-			if (payload?.trunk) {
+			if (payload && payload.trunk) {
 				applyTrunkInventoryFromVehicle(payload.trunk, "vehicle trunk");
 			}
 		})
@@ -2967,8 +3157,8 @@ function extractMissionMarkerFromPayload(payload) {
 		}
 	}
 
-	const missionX = Number(payload.mission_x ?? payload.marker_x);
-	const missionY = Number(payload.mission_y ?? payload.marker_y);
+	const missionX = Number(payload.mission_x === null || payload.mission_x === undefined ? payload.marker_x : payload.mission_x);
+	const missionY = Number(payload.mission_y === null || payload.mission_y === undefined ? payload.marker_y : payload.mission_y);
 	if (Number.isFinite(missionX) && Number.isFinite(missionY)) {
 		return { x: missionX, y: missionY, waypoint: payload.waypoint === true, source: "mission-fields" };
 	}
@@ -3049,9 +3239,9 @@ function requestNuiData() {
 	})
 		.then((response) => response.json())
 		.then((payload) => {
-			if (payload?.order) {
+			if (payload && payload.order) {
 				updateOrderFromSource(payload.order, "Pizza Delivery window");
-			} else if (payload?.text) {
+			} else if (payload && payload.text) {
 				updateOrderFromText(payload.text, "Pizza Delivery window");
 			}
 		})
@@ -3083,7 +3273,7 @@ function requestNuiData() {
 	})
 		.then((response) => response.json())
 		.then((payload) => {
-			if (payload?.marker) {
+			if (payload && payload.marker) {
 				updateMissionMarker(payload.marker);
 			}
 		})
@@ -3252,30 +3442,6 @@ function clearOrder() {
 	showToast("Order cleared.");
 }
 
-async function moveOne(itemName) {
-	if (state.tycoonTrunk.busy) {
-		showToast("Please wait, previous trunk action is still processing.");
-		return;
-	}
-
-	if (state.trunk[itemName] <= 0) {
-		showToast(`No ${itemName} left in trunk.`);
-		return;
-	}
-
-	state.tycoonTrunk.busy = true;
-	try {
-		const requested = await requestTycoonTrunkTake(itemName, 1);
-		if (requested) {
-			showToast(`Requested +1 ${itemName} from trunk.`);
-		}
-	} finally {
-		window.setTimeout(() => {
-			state.tycoonTrunk.busy = false;
-		}, 300);
-	}
-}
-
 async function moveNeeded(itemName) {
 	if (state.tycoonTrunk.busy) {
 		showToast("Please wait, previous trunk action is still processing.");
@@ -3307,6 +3473,114 @@ async function moveNeeded(itemName) {
 	}
 }
 
+function isPutAllMenuChoice(choiceLabel) {
+	if (typeof choiceLabel !== "string") {
+		return false;
+	}
+
+	const normalized = cleanMenuChoiceLabel(choiceLabel).toLowerCase();
+	return normalized === "put all";
+}
+
+function isTakeOrderMenuChoice(choiceLabel) {
+	if (typeof choiceLabel !== "string") {
+		return false;
+	}
+
+	const normalized = cleanMenuChoiceLabel(choiceLabel).toLowerCase();
+	return normalized === "take order";
+}
+
+async function recoverFromUnsafePutAllSelection(reason = "") {
+	if (!isPutAllMenuChoice(state.tycoonTrunk.lastMenuChoice)) {
+		return false;
+	}
+
+	if (!hasTycoonTrunkContext()) {
+		debugLogMessage({
+			type: "pizza-job-debug",
+			stage: "put-all-guard-recover-skipped-stale",
+			reason,
+			menuOpen: state.tycoonTrunk.menuOpen,
+			menuName: state.tycoonTrunk.menuName,
+			lastMenuChoice: state.tycoonTrunk.lastMenuChoice
+		});
+		return false;
+	}
+
+	debugLogMessage({
+		type: "pizza-job-debug",
+		stage: "put-all-guard-recover-start",
+		reason,
+		lastMenuChoice: state.tycoonTrunk.lastMenuChoice
+	});
+
+	await pulseTycoonMenuState(`put-all-recover-${reason || "take-order"}`, 1, 70);
+	forceTycoonChoiceFromCandidates(
+		["Take Order", "Take order", "<span sort='A'></span>Take Order", "Take Order (O)"],
+		0
+	);
+	requestTycoonMenuState(`put-all-recover-shift-${reason || "take-order"}`);
+	const recovered = await waitForCondition(() => !isPutAllMenuChoice(state.tycoonTrunk.lastMenuChoice), 260, 35);
+	if (recovered) {
+		await pulseTycoonMenuState(`put-all-recover-confirm-${reason || "take-order"}`, 1, 70);
+	}
+
+	debugLogMessage({
+		type: "pizza-job-debug",
+		stage: recovered ? "put-all-guard-recover-success" : "put-all-guard-recover-failed",
+		reason,
+		menuOpen: state.tycoonTrunk.menuOpen,
+		menuName: state.tycoonTrunk.menuName,
+		activeChestId: state.tycoonTrunk.activeChestId
+	});
+
+	return recovered;
+}
+
+async function closeTycoonTrunkMenu(reason = "") {
+	const menuName = typeof state.tycoonTrunk.menuName === "string" ? state.tycoonTrunk.menuName.toLowerCase() : "";
+	if (!state.tycoonTrunk.menuOpen && !menuName.includes("trunk")) {
+		return true;
+	}
+
+	debugLogMessage({
+		type: "pizza-job-debug",
+		stage: "trunk-close-start",
+		reason,
+		menuOpen: state.tycoonTrunk.menuOpen,
+		menuName: state.tycoonTrunk.menuName
+	});
+
+	for (let attempt = 0; attempt < 3; attempt += 1) {
+		window.parent.postMessage({ type: "forceMenuBack" }, "*");
+		await pressTycoonMenuKey("back", 1, 70);
+		await new Promise((resolve) => window.setTimeout(resolve, 70));
+		requestTycoonMenuState(`close-trunk-${reason || "action"}-${attempt + 1}`);
+
+		const closed = await waitForCondition(() => !state.tycoonTrunk.menuOpen, 260, 35);
+		if (closed) {
+			debugLogMessage({
+				type: "pizza-job-debug",
+				stage: "trunk-close-success",
+				reason,
+				attempt: attempt + 1
+			});
+			return true;
+		}
+	}
+
+	debugLogMessage({
+		type: "pizza-job-debug",
+		stage: "trunk-close-failed",
+		reason,
+		menuOpen: state.tycoonTrunk.menuOpen,
+		menuName: state.tycoonTrunk.menuName
+	});
+
+	return false;
+}
+
 async function takeOrder() {
 	if (state.tycoonTrunk.busy) {
 		showToast("Please wait, previous trunk action is still processing.");
@@ -3323,6 +3597,7 @@ async function takeOrder() {
 		const trunkReady = await ensureTycoonTrunkContext("take-order-button");
 		if (trunkReady) {
 			await pulseTycoonMenuState("take-order-button", 2, 70);
+			await recoverFromUnsafePutAllSelection("take-order-button");
 
 			const takeOrderOption =
 				findTycoonMenuChoice("Take Order", "Take order", "Take Order (O)", "Take order (o)") ||
@@ -3340,7 +3615,33 @@ async function takeOrder() {
 			}
 
 			if (menuTriggered) {
+				requestTycoonMenuState("take-order-pre-enter");
+				const contextReadyBeforeEnter = await waitForCondition(hasTycoonTrunkContext, 240, 35);
+				const takeOrderSelected =
+					isTakeOrderMenuChoice(state.tycoonTrunk.lastMenuChoice) ||
+					(await waitForCondition(() => isTakeOrderMenuChoice(state.tycoonTrunk.lastMenuChoice), 220, 35));
+
+				if (!contextReadyBeforeEnter || !takeOrderSelected) {
+					debugLogMessage({
+						type: "pizza-job-debug",
+						stage: "take-order-enter-blocked",
+						reason: !contextReadyBeforeEnter ? "missing-trunk-context" : "take-order-not-selected",
+						menuOpen: state.tycoonTrunk.menuOpen,
+						menuName: state.tycoonTrunk.menuName,
+						lastMenuChoice: state.tycoonTrunk.lastMenuChoice,
+						activeChestId: state.tycoonTrunk.activeChestId
+					});
+					showToast("Trunk menu was not ready for Take Order yet. Press again.");
+					return;
+				}
+
 				await pressTycoonMenuKey("enter", 1, 80);
+				await waitForCondition(
+					() => wasRecentAnyTycoonTakeSuccess(1800) || isPutAllMenuChoice(state.tycoonTrunk.lastMenuChoice),
+					900,
+					45
+				);
+				await closeTycoonTrunkMenu("take-order-menu-success");
 				showToast("Take Order requested from trunk menu.");
 				return;
 			}
@@ -3367,6 +3668,7 @@ async function takeOrder() {
 		}
 
 		if (requestedAny) {
+			await closeTycoonTrunkMenu("take-order-item-fallback-success");
 			showToast("Take Order requested from trunk.");
 		} else {
 			showToast("Unable to request Take Order from trunk.");
@@ -3380,7 +3682,9 @@ async function takeOrder() {
 
 function getLowStockItems() {
 	return TRACKED_ITEMS.filter((item) => {
-		const threshold = state.settings.lowThresholdByItem[item] ?? 5;
+		const storedThresholdValue = state.settings.lowThresholdByItem[item];
+		const threshold =
+			storedThresholdValue === null || storedThresholdValue === undefined ? 5 : storedThresholdValue;
 		return state.trunk[item] <= threshold;
 	});
 }
@@ -3440,17 +3744,18 @@ function renderOrder() {
 function renderTrunk() {
 	refs.trunkList.innerHTML = "";
 	const lows = getLowStockItems();
-	refs.trunkAlertCount.textContent = `${lows.length} Low`;
+	renderTrunkAlertBadge(lows.length);
 
 	TRACKED_ITEMS.forEach((item) => {
 		const row = document.createElement("div");
-		const threshold = state.settings.lowThresholdByItem[item] ?? 5;
+		const storedThresholdValue = state.settings.lowThresholdByItem[item];
+		const threshold =
+			storedThresholdValue === null || storedThresholdValue === undefined ? 5 : storedThresholdValue;
 		const isLow = state.trunk[item] <= threshold;
-		row.className = `item-row ${isLow ? "low-stock" : ""}`;
+		row.className = `item-row trunk-item-row ${isLow ? "low-stock" : ""}`;
 		row.innerHTML = `
 			<div class="name">${getTrackedItemLabelWithWeight(item)}</div>
 			<div class="qty">In Trunk: ${state.trunk[item]} | Low At: ${threshold}</div>
-			<button class="btn btn-secondary btn-tiny" data-move-one="${item}">Move +1</button>
 		`;
 		refs.trunkList.appendChild(row);
 	});
@@ -3468,7 +3773,7 @@ function renderNow() {
 		refs.themeSelect.value = state.settings.theme;
 	}
 	if (refs.fontSizeInput) {
-		refs.fontSizeInput.value = String(clamp(state.settings.fontScale || 1, 0.85, 1.35));
+		refs.fontSizeInput.value = String(clamp(state.settings.fontScale || 1, UI_MIN_FONT_SCALE, UI_MAX_FONT_SCALE));
 	}
 	applyThemePreset();
 	applyUIFontScale();
@@ -3691,9 +3996,25 @@ function setupEventHandlers() {
 		document.body.appendChild(ta);
 		ta.focus();
 		ta.select();
-		const ok = document.execCommand("copy");
+		let ok = false;
+		if (typeof document.execCommand === "function") {
+			try {
+				ok = document.execCommand("copy");
+			} catch {
+				ok = false;
+			}
+		}
 		document.body.removeChild(ta);
-		showToast(ok ? "Log copied to clipboard." : "Copy failed — select log text manually.", 2400);
+
+		if (!ok && navigator.clipboard && typeof navigator.clipboard.writeText === "function") {
+			navigator.clipboard
+				.writeText(entries)
+				.then(() => showToast("Log copied to clipboard.", 2400))
+				.catch(() => showToast("Copy failed - select log text manually.", 2400));
+			return;
+		}
+
+		showToast(ok ? "Log copied to clipboard." : "Copy failed - select log text manually.", 2400);
 	});
 
 	refs.debugFilterSelect.addEventListener("change", () => {
@@ -3745,7 +4066,7 @@ function setupEventHandlers() {
 	if (refs.themeSelect) {
 		refs.themeSelect.addEventListener("change", () => {
 			const nextTheme = refs.themeSelect.value;
-			if (!Object.hasOwn(UI_THEME_PRESETS, nextTheme)) {
+			if (!hasOwn(UI_THEME_PRESETS, nextTheme)) {
 				return;
 			}
 
@@ -3760,7 +4081,7 @@ function setupEventHandlers() {
 	if (refs.fontSizeInput) {
 		const updateFontScaleFromInput = () => {
 			const parsed = Number(refs.fontSizeInput.value);
-			state.settings.fontScale = clamp(Number.isNaN(parsed) ? 1 : parsed, 0.85, 1.35);
+			state.settings.fontScale = clamp(Number.isNaN(parsed) ? 1 : parsed, UI_MIN_FONT_SCALE, UI_MAX_FONT_SCALE);
 			applyUIFontScale();
 			saveSettings();
 		};
@@ -3797,17 +4118,6 @@ function setupEventHandlers() {
 		});
 	}
 
-	refs.trunkList.addEventListener("click", (event) => {
-		const target = event.target;
-		if (!(target instanceof HTMLElement)) {
-			return;
-		}
-		const itemName = target.dataset.moveOne;
-		if (itemName) {
-			moveOne(itemName);
-		}
-	});
-
 	window.addEventListener("message", (event) => {
 		// Log every raw message so the debug panel shows real incoming payload shapes.
 		debugLogMessage(event.data);
@@ -3822,6 +4132,8 @@ function setupEventHandlers() {
 		if (nestedPayload && typeof nestedPayload === "object") {
 			payloads.push(nestedPayload);
 		}
+
+		let circleHandledForEvent = false;
 
 		for (const data of payloads) {
 			if (!data || typeof data !== "object") {
@@ -3847,7 +4159,8 @@ function setupEventHandlers() {
 				continue;
 			}
 
-			if (hasCircleTrigger(parsedData)) {
+			if (!circleHandledForEvent && hasCircleTrigger(parsedData)) {
+				circleHandledForEvent = true;
 				takeOrder();
 			}
 
