@@ -7,74 +7,144 @@
 		<link rel="stylesheet" href="style.css" />
 	</head>
 	<body>
-		<div id="app" class="app">
+		<div id="app" class="app hidden">
 			<header class="topbar">
 				<div class="brand">
 					<h1>Pizza Job</h1>
-					<p class="subtitle">Order + Supply Assistant</p>
+					<p class="subtitle">Tycoon Pizza Event 2026 | Pizza Bot 9000</p>
 				</div>
 				<div class="topbar-actions">
-					<button id="simulate-order-btn" class="btn btn-secondary" title="Load a random order">
-						New Order
+					<button id="debug-toggle-btn" class="btn btn-secondary" data-tooltip="Open or close the debug console.">Debug</button>
+					<button id="settings-toggle-btn" class="btn btn-primary" data-tooltip="Open the settings window.">Settings</button>
+					<button id="reset-panel-btn" class="btn btn-secondary" data-tooltip="Reset this app window size and position.">
+						Reset
 					</button>
-					<button id="settings-toggle-btn" class="btn btn-primary" title="Open settings">Settings</button>
 				</div>
 			</header>
 
-			<main class="layout">
-				<section class="card order-card" aria-label="Current pizza order">
-					<div class="card-header">
-						<h2>Current Order</h2>
-						<span id="order-id" class="pill">#0000</span>
-					</div>
-					<div id="order-list" class="item-list"></div>
-					<div class="card-footer">
-						<button id="clear-order-btn" class="btn btn-secondary">Clear Order</button>
-					</div>
-				</section>
-
-				<section class="card" aria-label="Trunk inventory">
+			<main class="layout compact-layout">
+				<section class="card trunk-card" aria-label="Trunk inventory">
 					<div class="card-header">
 						<h2>Trunk Inventory</h2>
 						<span id="trunk-alert-count" class="pill pill-alert">0 Low</span>
 					</div>
 					<div id="trunk-list" class="item-list"></div>
-				</section>
-
-				<section class="card" aria-label="Personal inventory">
-					<div class="card-header">
-						<h2>Personal Inventory</h2>
+					<div class="card-footer">
+						<button id="take-order-btn" class="btn btn-primary btn-block" title="Request full order transfer from trunk">
+							Take Order
+						</button>
 					</div>
-					<div id="inventory-list" class="item-list"></div>
 				</section>
 			</main>
 
 			<aside id="settings-panel" class="settings-panel hidden" aria-label="Settings panel">
 				<div class="settings-header">
 					<h3>Settings</h3>
-					<button id="settings-close-btn" class="icon-btn" aria-label="Close settings">x</button>
+					<div class="settings-header-actions">
+						<button id="settings-detach-btn" class="icon-btn settings-detach-btn" aria-label="Toggle detached settings panel" data-tooltip="Pop settings out or dock them back to the app.">Pop Out</button>
+						<button id="settings-close-btn" class="icon-btn settings-close-btn" aria-label="Close settings" data-tooltip="Close settings.">&times;</button>
+					</div>
 				</div>
 				<div class="settings-content">
+					<div class="setting-row stacked">
+						<div class="setting-inline-row low-threshold-heading">
+							<span>Low Stock Thresholds</span>
+						</div>
+						<div id="low-threshold-list"></div>
+					</div>
 					<label class="setting-row">
-						<span>Low Stock Threshold</span>
-						<input id="low-threshold-input" type="number" min="1" max="99" value="5" />
+						<span>Theme</span>
+						<select id="theme-select">
+							<option value="midnight">Midnight Garage</option>
+							<option value="pizza">Pizza Parlor</option>
+							<option value="cola">Cola Classic</option>
+							<option value="pepsi">Pepsi Pulse</option>
+							<option value="retro">Retro Arcade</option>
+							<option value="neon">Neon Delivery</option>
+							<option value="diner">Vintage Diner</option>
+						</select>
+					</label>
+					<label class="setting-row stacked">
+						<div class="setting-inline-row">
+							<span>Font Size</span>
+							<span id="font-size-value">100%</span>
+						</div>
+						<input id="font-size-input" type="range" min="0.85" max="1.35" step="0.01" value="1" />
 					</label>
 					<label class="setting-row checkbox-row">
-						<input id="gps-enabled-input" type="checkbox" checked />
-						<span>Enable GTA V GPS Waypoint</span>
+						<input id="settings-detached-input" type="checkbox" checked />
+						<span>Pop Out Settings Window</span>
 					</label>
-					<div class="setting-row stacked">
-						<span>Waypoint Coordinates</span>
-						<div class="coords-row">
-							<input id="gps-x-input" type="number" step="0.01" placeholder="X" value="224.54" />
-							<input id="gps-y-input" type="number" step="0.01" placeholder="Y" value="-895.21" />
+					<label class="setting-row stacked">
+						<div class="setting-inline-row">
+							<span>Window Background Opacity</span>
+							<span id="bg-opacity-value">82%</span>
 						</div>
+						<input id="bg-opacity-input" type="range" min="0" max="1" step="0.01" value="0.82" />
+					</label>
+				</div>
+			</aside>
+
+			<aside id="debug-pin-panel" class="debug-pin-panel hidden" aria-label="Debug PIN panel">
+				<div class="debug-pin-header">
+					<h3>Debug Access</h3>
+				</div>
+				<div class="debug-pin-content">
+					<label class="setting-row stacked">
+						<span>Enter PIN</span>
+						<input id="debug-pin-input" type="password" inputmode="numeric" autocomplete="off" />
+					</label>
+					<div class="debug-pin-actions">
+						<button id="debug-pin-submit-btn" class="btn btn-primary">Unlock</button>
+						<button id="debug-pin-cancel-btn" class="btn btn-secondary">Cancel</button>
 					</div>
-					<button id="apply-gps-btn" class="btn btn-primary">Set Waypoint</button>
 				</div>
 			</aside>
 
 			<div id="toast" class="toast hidden" role="status" aria-live="polite"></div>
+			<div id="panel-resize-handle" class="panel-resize-handle" title="Resize panel"></div>
+
+			<aside id="debug-panel" class="debug-panel hidden" aria-label="Message debug log">
+				<div class="debug-header">
+					<div class="debug-title-block">
+						<span class="debug-title">Debug Console</span>
+						<span class="debug-subtitle">Bridge events, menu state, and raw server diagnostics</span>
+					</div>
+					<div class="debug-actions">
+						<button id="debug-copy-btn" class="debug-tool-btn" aria-label="Copy all log entries" data-tooltip="Copy debug log entries to your clipboard.">Copy</button>
+						<button id="debug-clear-btn" class="debug-tool-btn" aria-label="Clear log" data-tooltip="Clear all debug log entries.">Clear</button>
+						<button id="debug-close-btn" class="debug-tool-btn debug-tool-btn-danger" aria-label="Close debug log" data-tooltip="Close the debug console.">Close</button>
+					</div>
+				</div>
+				<div id="debug-toolbar" class="debug-toolbar">
+					<div class="debug-toolbar-group">
+						<label class="debug-toolbar-label" for="debug-filter-select">Filter</label>
+						<select id="debug-filter-select" class="debug-select" aria-label="Debug filter mode">
+							<option value="focused">Focused</option>
+							<option value="server">Server Events + Actions</option>
+							<option value="all">All Messages</option>
+						</select>
+					</div>
+					<label class="debug-checkbox-row" for="debug-verbose-toggle">
+						<input id="debug-verbose-toggle" type="checkbox" />
+						<span>Include verbose raw payloads</span>
+					</label>
+				</div>
+				<div id="debug-log" class="debug-log"></div>
+			</aside>
+		</div>
+
+		<div id="floating-tooltip" class="floating-tooltip hidden" role="tooltip" aria-hidden="true"></div>
+
+		<div id="reset-confirm-backdrop" class="confirm-backdrop hidden" aria-hidden="true">
+			<div id="reset-confirm-dialog" class="confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="reset-confirm-title">
+				<h3 id="reset-confirm-title">Reset Window Layout?</h3>
+				<p>This will reset the pizza app window position and size.</p>
+				<div class="confirm-actions">
+					<button id="reset-confirm-cancel-btn" class="btn btn-secondary">Cancel</button>
+					<button id="reset-confirm-ok-btn" class="btn btn-primary">Reset Window</button>
+				</div>
+			</div>
 		</div>
 
 		<script src="script.js"></script>
