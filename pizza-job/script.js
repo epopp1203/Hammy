@@ -22,7 +22,6 @@ const NUI_IDLE_POLL_INTERVAL_MS = 6000;
 const NUI_HIDDEN_POLL_INTERVAL_MS = 10000;
 const USER_ACTIVITY_TIMEOUT_MS = 120000;
 const VEHICLE_TRUNK_REFRESH_COOLDOWN_MS = 800;
-const TRUNK_REOPEN_GUARD_DELAY_MS = 700;
 const TYCOON_OPEN_TRUNK_COMMANDS = ["rm_trunk", "rm_cabtrunk"];
 const DEBUG_PIN_XOR_KEY = 0x53;
 const DEBUG_PIN_OBFUSCATED = [106, 97, 101, 98, 106];
@@ -346,11 +345,13 @@ const state = {
 		bgOpacity: 0.82,
 		gpsEnabled: true,
 		gpsX: null,
-		gpsY: null
+		gpsY: null,
+		autoTakeOrderOnExit: true
 	},
 	playerJobName: "",
 	isPizzaDeliveryActive: false,
 	lastUserActivityTime: 0,
+	lastVehicle: null,
 	orderSync: {
 		source: "Local",
 		at: null
@@ -394,10 +395,10 @@ const refs = {
 	fontSizeValue: document.getElementById("font-size-value"),
 	bgOpacityInput: document.getElementById("bg-opacity-input"),
 	bgOpacityValue: document.getElementById("bg-opacity-value"),
+	autoTakeOrderOnExitCheckbox: document.getElementById("auto-take-order-on-exit-checkbox"),
 	toast: document.getElementById("toast"),
 	floatingTooltip: document.getElementById("floating-tooltip"),
 	resetConfirmBackdrop: document.getElementById("reset-confirm-backdrop"),
-	resetConfirmDialog: document.getElementById("reset-confirm-dialog"),
 	resetConfirmCancelBtn: document.getElementById("reset-confirm-cancel-btn"),
 	resetConfirmOkBtn: document.getElementById("reset-confirm-ok-btn")
 };
@@ -509,6 +510,20 @@ function normalizeJobName(jobName) {
 	return typeof jobName === "string" ? jobName.trim().toLowerCase() : "";
 }
 
+function isPizzaDeliveryJobName(jobName) {
+	const normalized = normalizeJobName(jobName);
+	if (!normalized) {
+		return false;
+	}
+
+	if (normalized === PIZZA_DELIVERY_JOB_NAME) {
+		return true;
+	}
+
+	// Some payloads include suffixes/prefixes in job_title.
+	return normalized.includes(PIZZA_DELIVERY_JOB_NAME);
+}
+
 function setPizzaJobAppVisible(isVisible) {
 	refs.app.classList.toggle("hidden", !isVisible);
 	if (!isVisible) {
@@ -520,6 +535,11 @@ function setPizzaJobAppVisible(isVisible) {
 		setDebugPinPanelOpen(false);
 		setDebugPanelOpen(false);
 	}
+}
+
+function canRunTakeOrder() {
+	const uiVisible = refs.app ? !refs.app.classList.contains("hidden") : false;
+	return state.isPizzaDeliveryActive || uiVisible;
 }
 
 function requestPassiveTycoonState(reason = "job-state") {
@@ -543,7 +563,7 @@ function requestPassiveTycoonState(reason = "job-state") {
 
 function setPlayerJobState(jobName) {
 	const normalizedJobName = normalizeJobName(jobName);
-	const isPizzaDeliveryActive = normalizedJobName === PIZZA_DELIVERY_JOB_NAME;
+	const isPizzaDeliveryActive = isPizzaDeliveryJobName(normalizedJobName);
 	const jobChanged = normalizedJobName !== state.playerJobName;
 	const activeChanged = isPizzaDeliveryActive !== state.isPizzaDeliveryActive;
 
@@ -607,8 +627,8 @@ function resetPizzaJobRuntimeState() {
 		return;
 	}
 
-	const payload = { action: "clearWaypoint" };
-	window.postMessage(payload, "*");
+	const payload = { type: "clearWaypoint" };
+	window.parent.postMessage(payload, "*");
 	const resourceName = window.GetParentResourceName();
 	fetch(`https://${resourceName}/clearWaypoint`, {
 		method: "POST",
@@ -658,7 +678,7 @@ function tryParseJsonObject(rawValue) {
 	try {
 		const parsed = JSON.parse(trimmed);
 		return parsed && typeof parsed === "object" ? parsed : null;
-	} catch {
+	} catch (error) {
 		return null;
 	}
 }
@@ -853,7 +873,7 @@ const DEFAULT_DEBUG_FILTER_MODE = "trunk";
 function isVerboseRawDebugEnabled() {
 	try {
 		return localStorage.getItem(VERBOSE_RAW_DEBUG_STORAGE_KEY) === "true";
-	} catch {
+	} catch (error) {
 		return false;
 	}
 }
@@ -861,7 +881,7 @@ function isVerboseRawDebugEnabled() {
 function setVerboseRawDebugEnabled(enabled) {
 	try {
 		localStorage.setItem(VERBOSE_RAW_DEBUG_STORAGE_KEY, enabled ? "true" : "false");
-	} catch {
+	} catch (error) {
 		// Ignore storage failures.
 	}
 }
@@ -875,7 +895,7 @@ function getDebugFilterMode() {
 	try {
 		const stored = localStorage.getItem(DEBUG_FILTER_STORAGE_KEY);
 		return DEBUG_FILTER_MODES.includes(stored) ? stored : DEFAULT_DEBUG_FILTER_MODE;
-	} catch {
+	} catch (error) {
 		return DEFAULT_DEBUG_FILTER_MODE;
 	}
 }
@@ -888,7 +908,7 @@ function setDebugFilterMode(mode) {
 
 	try {
 		localStorage.setItem(DEBUG_FILTER_STORAGE_KEY, safeMode);
-	} catch {
+	} catch (error) {
 		// Ignore storage failures.
 	}
 }
@@ -995,7 +1015,7 @@ function getFocusedTycoonPayloadSignature(data) {
 
 	try {
 		return JSON.stringify(signatureSource);
-	} catch {
+	} catch (error) {
 		return "";
 	}
 }
@@ -1136,7 +1156,7 @@ function getTrunkSignalPayloadSignature(data) {
 
 	try {
 		return JSON.stringify(signatureSource);
-	} catch {
+	} catch (error) {
 		return "";
 	}
 }
@@ -1251,7 +1271,7 @@ function debugLogMessage(raw) {
 	let text;
 	try {
 		text = JSON.stringify(raw, null, 0);
-	} catch {
+	} catch (error) {
 		text = String(raw);
 	}
 
@@ -1334,7 +1354,7 @@ function loadPanelLayout() {
 		refs.app.style.height = `${height}px`;
 		refs.app.style.left = `${left}px`;
 		refs.app.style.top = `${top}px`;
-	} catch {
+	} catch (error) {
 		localStorage.removeItem(PANEL_LAYOUT_STORAGE_KEY);
 	}
 }
@@ -1400,7 +1420,7 @@ function loadDebugPanelLayout() {
 			refs.debugPanel.style.left = `${left}px`;
 			refs.debugPanel.style.top = `${top}px`;
 		}
-	} catch {
+	} catch (error) {
 		localStorage.removeItem(DEBUG_PANEL_LAYOUT_STORAGE_KEY);
 	}
 }
@@ -1457,7 +1477,10 @@ function loadSettings() {
 		if (typeof parsed.gpsY === "number") {
 			state.settings.gpsY = parsed.gpsY;
 		}
-	} catch {
+		if (typeof parsed.autoTakeOrderOnExit === "boolean") {
+			state.settings.autoTakeOrderOnExit = parsed.autoTakeOrderOnExit;
+		}
+	} catch (error) {
 		localStorage.removeItem(SETTINGS_STORAGE_KEY);
 	}
 }
@@ -1708,8 +1731,8 @@ function clearWaypointData() {
 	state.settings.gpsY = null;
 	lastAutoMissionMarkerSignature = "";
 
-	const payload = { action: "clearWaypoint" };
-	window.postMessage(payload, "*");
+	const payload = { type: "clearWaypoint" };
+	window.parent.postMessage(payload, "*");
 
 	if (window.GetParentResourceName) {
 		const resourceName = window.GetParentResourceName();
@@ -1988,12 +2011,13 @@ function cleanMenuChoiceLabel(rawLabel) {
 	return rawLabel
 		.replace(/<[^>]*>/g, "")
 		.replace(/&#\d+;/g, "")
+		.replace(/\s*\([a-z]\)$/i, "")
 		.replace(/\s+/g, " ")
 		.trim();
 }
 
 function findTycoonMenuChoice(...candidateLabels) {
-	const candidates = candidateLabels.map((label) => label.toLowerCase());
+	const candidates = candidateLabels.map((label) => cleanMenuChoiceLabel(label).toLowerCase());
 	for (const choice of state.tycoonTrunk.menuChoices) {
 		if (!Array.isArray(choice) || typeof choice[0] !== "string") {
 			continue;
@@ -2946,10 +2970,6 @@ function applyTrunkInventoryFromVehicle(payload, sourceLabel = "vehicle trunk") 
 }
 
 function refreshVehicleTrunkInventory(reason, force = false) {
-	if (!state.isPizzaDeliveryActive) {
-		return;
-	}
-
 	const now = Date.now();
 	if (!force && now - lastVehicleTrunkRefreshAt < VEHICLE_TRUNK_REFRESH_COOLDOWN_MS) {
 		return;
@@ -3221,10 +3241,6 @@ function handleIncomingMarkerPayload(payload) {
 }
 
 function requestNuiData() {
-	if (!state.isPizzaDeliveryActive) {
-		return;
-	}
-
 	if (!window.GetParentResourceName) {
 		return;
 	}
@@ -3479,7 +3495,7 @@ function isPutAllMenuChoice(choiceLabel) {
 	}
 
 	const normalized = cleanMenuChoiceLabel(choiceLabel).toLowerCase();
-	return normalized === "put all";
+	return normalized === "put all" || normalized.startsWith("put all ");
 }
 
 function isTakeOrderMenuChoice(choiceLabel) {
@@ -3488,7 +3504,7 @@ function isTakeOrderMenuChoice(choiceLabel) {
 	}
 
 	const normalized = cleanMenuChoiceLabel(choiceLabel).toLowerCase();
-	return normalized === "take order";
+	return normalized === "take order" || normalized.startsWith("take order ");
 }
 
 async function recoverFromUnsafePutAllSelection(reason = "") {
@@ -3582,6 +3598,15 @@ async function closeTycoonTrunkMenu(reason = "") {
 }
 
 async function takeOrder() {
+	if (!canRunTakeOrder()) {
+		debugLogMessage({
+			type: "pizza-job-debug",
+			stage: "take-order-skipped",
+			reason: "job-inactive-and-ui-hidden"
+		});
+		return;
+	}
+
 	if (state.tycoonTrunk.busy) {
 		showToast("Please wait, previous trunk action is still processing.");
 		return;
@@ -3692,16 +3717,12 @@ function getLowStockItems() {
 function setWaypoint(x, y) {
 	// Send to the Tycoon UserApp parent frame to set the in-game GPS waypoint.
 	window.parent.postMessage({ type: "setWaypoint", x, y }, "*");
-	window.parent.postMessage({ action: "setWaypoint", x, y }, "*");
 
 	const payload = {
-		action: "setWaypoint",
+		type: "setWaypoint",
 		x,
 		y
 	};
-
-	// FiveM-friendly hook: your Lua/JS client can listen for this message from NUI.
-	window.postMessage(payload, "*");
 
 	// Optional NUI callback endpoint if this page is hosted by a FiveM resource.
 	if (window.GetParentResourceName) {
@@ -3781,6 +3802,9 @@ function renderNow() {
 	refs.bgOpacityInput.value = String(state.settings.bgOpacity);
 	refs.bgOpacityValue.textContent = `${Math.round(state.settings.bgOpacity * 100)}%`;
 	applyWindowBackgroundOpacity();
+	if (refs.autoTakeOrderOnExitCheckbox) {
+		refs.autoTakeOrderOnExitCheckbox.checked = !state.settings.autoTakeOrderOnExit;
+	}
 }
 
 function render(force = false) {
@@ -4000,7 +4024,7 @@ function setupEventHandlers() {
 		if (typeof document.execCommand === "function") {
 			try {
 				ok = document.execCommand("copy");
-			} catch {
+			} catch (error) {
 				ok = false;
 			}
 		}
@@ -4118,6 +4142,14 @@ function setupEventHandlers() {
 		});
 	}
 
+	if (refs.autoTakeOrderOnExitCheckbox) {
+		refs.autoTakeOrderOnExitCheckbox.addEventListener("change", () => {
+			state.settings.autoTakeOrderOnExit = !refs.autoTakeOrderOnExitCheckbox.checked;
+			saveSettings();
+			showToast(refs.autoTakeOrderOnExitCheckbox.checked ? "Auto-take order on vehicle exit disabled." : "Auto-take order on vehicle exit enabled.", 1800);
+		});
+	}
+
 	window.addEventListener("message", (event) => {
 		// Log every raw message so the debug panel shows real incoming payload shapes.
 		debugLogMessage(event.data);
@@ -4155,11 +4187,8 @@ function setupEventHandlers() {
 			}
 
 			updatePlayerJobStateFromPayload(parsedData);
-			if (!state.isPizzaDeliveryActive) {
-				continue;
-			}
 
-			if (!circleHandledForEvent && hasCircleTrigger(parsedData)) {
+			if (!circleHandledForEvent && hasCircleTrigger(parsedData) && canRunTakeOrder()) {
 				circleHandledForEvent = true;
 				takeOrder();
 			}
@@ -4286,6 +4315,19 @@ function setupEventHandlers() {
 				if (shouldRefreshFromVehicleStateChange(nowInVehicle)) {
 					refreshVehicleTrunkInventory(nowInVehicle ? "vehicle-enter" : "vehicle-exit", true);
 				}
+
+				// Auto-take order on vehicle exit if enabled
+				if (
+					state.settings.autoTakeOrderOnExit &&
+					canRunTakeOrder() &&
+					state.lastVehicle !== null &&
+					state.lastVehicle !== "onFoot" &&
+					parsedData.vehicle === "onFoot"
+				) {
+					takeOrder();
+				}
+
+				state.lastVehicle = parsedData.vehicle;
 			}
 
 			const inVehicleState = getInVehicleStateFromAny(parsedData);
@@ -4412,4 +4454,5 @@ loadPanelLayout();
 loadDebugPanelLayout();
 resetPizzaJobRuntimeState();
 setPizzaJobAppVisible(false);
+
 render(true);
