@@ -3723,7 +3723,7 @@ function setupEventHandlers() {
 		refs.lowThresholdList.addEventListener("keydown", (event) => {
 			if (event.key === "Enter" && event.target instanceof HTMLInputElement) {
 				updateThresholdValue(event.target);
-				event.target.blur();
+				event.target.select();
 			}
 		});
 	}
