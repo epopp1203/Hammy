@@ -381,7 +381,6 @@ const refs = {
 	settingsHeader: document.querySelector("#settings-panel .settings-header"),
 	settingsDetachBtn: document.getElementById("settings-detach-btn"),
 	settingsCloseBtn: document.getElementById("settings-close-btn"),
-	settingsDetachedInput: document.getElementById("settings-detached-input"),
 	lowThresholdList: document.getElementById("low-threshold-list"),
 	themeSelect: document.getElementById("theme-select"),
 	fontSizeInput: document.getElementById("font-size-input"),
@@ -1415,9 +1414,6 @@ function applySettingsPanelDetachMode(options = {}) {
 	}
 
 	refs.settingsPanel.classList.toggle("settings-detached", state.settings.settingsDetached);
-	if (refs.settingsDetachedInput) {
-		refs.settingsDetachedInput.checked = state.settings.settingsDetached;
-	}
 	if (refs.settingsDetachBtn) {
 		refs.settingsDetachBtn.textContent = state.settings.settingsDetached ? "Dock" : "Pop Out";
 	}
@@ -1437,6 +1433,27 @@ function setSettingsDetached(isDetached) {
 	saveSettings();
 }
 
+function updateThresholdValue(input) {
+	if (!(input instanceof HTMLInputElement)) {
+		return;
+	}
+
+	const itemName = input.dataset.thresholdItem;
+	if (!itemName || !TRACKED_ITEMS.includes(itemName)) {
+		return;
+	}
+
+	const parsed = Number(input.value);
+	const nextValue = clamp(Number.isNaN(parsed) ? 5 : parsed, 1, 99);
+	state.settings.lowThresholdByItem[itemName] = nextValue;
+	input.value = String(nextValue);
+	saveSettings();
+	renderTrunk();
+	const lowCount = getLowStockItems().length;
+	refs.trunkAlertCount.textContent = `${lowCount} Low`;
+	showToast(`${itemName} low stock threshold set to ${nextValue}.`);
+}
+
 function renderLowThresholdInputs() {
 	if (!refs.lowThresholdList) {
 		return;
@@ -1450,11 +1467,11 @@ function renderLowThresholdInputs() {
 		row.innerHTML = `
 			<span>${item}</span>
 			<input
-				type="number"
-				min="1"
-				max="99"
+				type="text"
+				inputmode="numeric"
 				value="${thresholdValue}"
 				data-threshold-item="${item}"
+				placeholder="1-99"
 			/>
 		`;
 		refs.lowThresholdList.appendChild(row);
@@ -3696,34 +3713,18 @@ function setupEventHandlers() {
 		});
 	}
 
-	if (refs.settingsDetachedInput) {
-		refs.settingsDetachedInput.addEventListener("change", () => {
-			setSettingsDetached(refs.settingsDetachedInput.checked);
-			showToast(state.settings.settingsDetached ? "Settings popped out." : "Settings docked.", 1500);
-		});
-	}
-
 	if (refs.lowThresholdList) {
 		refs.lowThresholdList.addEventListener("change", (event) => {
-			const target = event.target;
-			if (!(target instanceof HTMLInputElement)) {
-				return;
+			if (event.target instanceof HTMLInputElement) {
+				updateThresholdValue(event.target);
 			}
+		});
 
-			const itemName = target.dataset.thresholdItem;
-			if (!itemName || !TRACKED_ITEMS.includes(itemName)) {
-				return;
+		refs.lowThresholdList.addEventListener("keydown", (event) => {
+			if (event.key === "Enter" && event.target instanceof HTMLInputElement) {
+				updateThresholdValue(event.target);
+				event.target.blur();
 			}
-
-			const parsed = Number(target.value);
-			const nextValue = clamp(Number.isNaN(parsed) ? 5 : parsed, 1, 99);
-			state.settings.lowThresholdByItem[itemName] = nextValue;
-			target.value = String(nextValue);
-			saveSettings();
-			renderTrunk();
-			const lowCount = getLowStockItems().length;
-			refs.trunkAlertCount.textContent = `${lowCount} Low`;
-			showToast(`${itemName} low stock threshold set to ${nextValue}.`);
 		});
 	}
 
