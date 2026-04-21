@@ -43,9 +43,9 @@ const MARKER_DATA_KEYS = [
 const PIZZA_LEADERBOARD_CONFIG = {
 	enabled: true,
 	apiBaseUrl: "https://tycoon-2epova.users.cfx.re/status",
-	statName: "pizzas_delivered",
+	statName: "pizza_delivery",
 	apiKey: "",
-	refreshIntervalMs: 90000
+	refreshIntervalMs: 300000
 };
 
 const TRUNK_ITEM_KEY_ALIASES = {
@@ -424,7 +424,6 @@ const refs = {
 	bgOpacityInput: document.getElementById("bg-opacity-input"),
 	bgOpacityValue: document.getElementById("bg-opacity-value"),
 	autoTakeOrderOnExitCheckbox: document.getElementById("auto-take-order-on-exit-checkbox"),
-	leaderboardStatInput: document.getElementById("leaderboard-stat-input"),
 	leaderboardApiKeyInput: document.getElementById("leaderboard-api-key-input"),
 	leaderboardRefreshSecondsInput: document.getElementById("leaderboard-refresh-seconds-input"),
 	leaderboardManualOnlyCheckbox: document.getElementById("leaderboard-manual-only-checkbox"),
@@ -4094,15 +4093,12 @@ function renderNow() {
 	if (refs.autoTakeOrderOnExitCheckbox) {
 		refs.autoTakeOrderOnExitCheckbox.checked = !state.settings.autoTakeOrderOnExit;
 	}
-	if (refs.leaderboardStatInput && document.activeElement !== refs.leaderboardStatInput) {
-		refs.leaderboardStatInput.value = state.settings.leaderboardStatName || "";
-	}
 	if (refs.leaderboardApiKeyInput && document.activeElement !== refs.leaderboardApiKeyInput) {
 		refs.leaderboardApiKeyInput.value = state.settings.leaderboardApiKey || "";
 	}
 	if (refs.leaderboardRefreshSecondsInput && document.activeElement !== refs.leaderboardRefreshSecondsInput) {
 		refs.leaderboardRefreshSecondsInput.value = String(
-			Math.round(clamp(Number(state.settings.leaderboardRefreshIntervalMs) || 90000, 10000, 600000) / 1000)
+			Math.round(clamp(Number(state.settings.leaderboardRefreshIntervalMs) || 300000, 10000, 600000) / 1000)
 		);
 	}
 	if (refs.leaderboardManualOnlyCheckbox) {
@@ -4454,9 +4450,6 @@ function setupEventHandlers() {
 	}
 
 	const applyLeaderboardSettingsFromInputs = (forceRefresh = false) => {
-		if (refs.leaderboardStatInput) {
-			state.settings.leaderboardStatName = refs.leaderboardStatInput.value.trim();
-		}
 		if (refs.leaderboardApiKeyInput) {
 			state.settings.leaderboardApiKey = refs.leaderboardApiKeyInput.value.trim();
 		}
@@ -4483,7 +4476,6 @@ function setupEventHandlers() {
 	};
 
 	for (const input of [
-		refs.leaderboardStatInput,
 		refs.leaderboardApiKeyInput,
 		refs.leaderboardRefreshSecondsInput,
 		refs.leaderboardManualOnlyCheckbox
@@ -4807,7 +4799,7 @@ function scheduleLeaderboardPoll() {
 		return;
 	}
 
-	const refreshIntervalMs = Math.max(10000, Number(config.refreshIntervalMs) || 90000);
+	const refreshIntervalMs = Math.max(10000, Number(config.refreshIntervalMs) || 300000);
 	leaderboardPollTimer = window.setTimeout(() => {
 		const shouldFetch = state.isPizzaDeliveryActive || (refs.app && !refs.app.classList.contains("hidden"));
 		if (shouldFetch) {
