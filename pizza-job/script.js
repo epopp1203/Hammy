@@ -356,7 +356,6 @@ const state = {
 		gpsX: null,
 		gpsY: null,
 		autoTakeOrderOnExit: true,
-		leaderboardStatName: PIZZA_LEADERBOARD_CONFIG.statName,
 		leaderboardApiKey: PIZZA_LEADERBOARD_CONFIG.apiKey,
 		leaderboardRefreshIntervalMs: PIZZA_LEADERBOARD_CONFIG.refreshIntervalMs,
 		leaderboardManualOnly: false
@@ -484,10 +483,7 @@ let nuiPollTimer = 0;
 let leaderboardPollTimer = 0;
 
 function getLeaderboardConfig() {
-	const statName =
-		typeof state.settings.leaderboardStatName === "string" && state.settings.leaderboardStatName.trim()
-			? state.settings.leaderboardStatName.trim()
-			: PIZZA_LEADERBOARD_CONFIG.statName;
+	const statName = PIZZA_LEADERBOARD_CONFIG.statName;
 	const apiKey =
 		typeof state.settings.leaderboardApiKey === "string" ? state.settings.leaderboardApiKey.trim() : "";
 	const refreshIntervalMs = clamp(
@@ -1716,9 +1712,6 @@ function loadSettings() {
 		}
 		if (typeof parsed.autoTakeOrderOnExit === "boolean") {
 			state.settings.autoTakeOrderOnExit = parsed.autoTakeOrderOnExit;
-		}
-		if (typeof parsed.leaderboardStatName === "string") {
-			state.settings.leaderboardStatName = parsed.leaderboardStatName;
 		}
 		if (typeof parsed.leaderboardApiKey === "string") {
 			state.settings.leaderboardApiKey = parsed.leaderboardApiKey;
