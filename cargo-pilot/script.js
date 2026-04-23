@@ -30,6 +30,12 @@ const NEXT_LEG_TRIGGER = "cp_advance_leg";
 const ATC_TRIGGER = "cp_call_atc";
 const GEAR_TRIGGER = "cp_toggle_gear";
 
+// Allow runway/ATC interoperability with servers that use a different nick
+// for the San Chanski airport key.
+const AIRPORT_ALIASES = {
+  SCHIA: ["SCHIA", "SCA"]
+};
+
 const OPACITY_LEVELS = [0.95, 0.75, 0.5, 0.25];
 
 const STORAGE_PREFIX = "cargoPilot_";
@@ -80,6 +86,7 @@ const state = {
   lastArrivedAt: 0,
   isAutomating: false,
   menuSessionAutomated: false,
+  runwaySeenAirports: new Set(),
   lastTriggerValues: {} // trigger_<name> -> last seen value (for edge detection)
 };
 
@@ -322,6 +329,16 @@ function clearBlip() {
 }
 
 function requestData() {
+  const runwayKeys = [];
+  for (const airport of CARGO_ROUTE) {
+    const aliases = aliasesForAirport(airport.key);
+    for (const alias of aliases) {
+      for (const kind of RUNWAY_KINDS) {
+        runwayKeys.push("runway_" + alias + "_" + kind);
+      }
+    }
+  }
+
   // Per Example2 docs, keys prefixed with `trigger_`, `chest_`, `temp_` are not
   // cached and cannot be returned by getNamedData — they arrive as push events
   // when they fire / open / change, so we don't include them here.
@@ -332,12 +349,29 @@ function requestData() {
       "pos_x", "pos_y", "pos_z",
       "landing_gear", "inventory", "weight", "max_weight",
       "menu_open", "menu", "menu_choices",
-      "runway_SSIA_MAIN", "runway_SSIA_SIDE", "runway_SSIA_JET",
-      "runway_MGA_MAIN", "runway_MGA_SIDE", "runway_MGA_JET",
-      "runway_SCHIA_MAIN", "runway_SCHIA_SIDE", "runway_SCHIA_JET",
+      ...runwayKeys,
       BXP_KEY
     ]
   });
+}
+
+function aliasesForAirport(airportKey) {
+  return AIRPORT_ALIASES[airportKey] || [airportKey];
+}
+
+function canonicalAirportKey(airportKey) {
+  for (const [canonical, aliases] of Object.entries(AIRPORT_ALIASES)) {
+    if (aliases.includes(airportKey)) return canonical;
+  }
+  return airportKey;
+}
+
+function resolveAtcAirportKey(airportKey) {
+  const aliases = aliasesForAirport(airportKey);
+  for (const alias of aliases) {
+    if (state.runwaySeenAirports.has(alias)) return alias;
+  }
+  return aliases[0] || airportKey;
 }
 
 // Tycoon prepends "trigger_" to the registered trigger name when sending values.
@@ -439,7 +473,9 @@ function parseRunwayKey(key) {
 function ingestRunway(key, value) {
   const parsed = parseRunwayKey(key);
   if (!parsed) return;
-  const { airport, kind } = parsed;
+  const airport = canonicalAirportKey(parsed.airport);
+  const kind = parsed.kind;
+  state.runwaySeenAirports.add(parsed.airport);
   if (!state.runways[airport]) state.runways[airport] = {};
   state.runways[airport][kind] = String(value || "").toLowerCase();
 }
@@ -564,7 +600,8 @@ function callATC() {
   const { airport } = nearestAirport();
   if (!airport) { showToast("No nearby airport"); return; }
   const pick = pickPreferredRunway(airport.key);
-  const cmd = "atc-call " + airport.key + " " + pick.kind;
+  const atcAirport = resolveAtcAirportKey(airport.key);
+  const cmd = "atc-call " + atcAirport + " " + pick.kind;
   sendCommand(cmd);
   sendNotification("Cargo Pilot: ATC call -> " + airport.label + " " + pick.kind);
   showToast("ATC: " + airport.label + " " + pick.kind);
@@ -788,7 +825,7 @@ function checkAfk() {
 function updateVisibility() {
   const main = document.getElementById("cp-main");
   if (!main) return;
-  const shouldShow = state.isPilotJob && !state.onFoot;
+  const shouldShow = state.isPilotJob && state.inOwnAircraft;
   if (shouldShow) {
     main.classList.remove("hidden");
   } else {
@@ -824,6 +861,17 @@ function updateVisibility() {
 // ---------- Data ingestion ----------
 function handleIncoming(data) {
   if (!data || typeof data !== "object") return;
+
+  const toFiniteNumber = (v) => {
+    if (typeof v === "number") return Number.isFinite(v) ? v : null;
+    if (typeof v === "string") {
+      const t = v.trim();
+      if (!t) return null;
+      const parsed = Number(t);
+      return Number.isFinite(parsed) ? parsed : null;
+    }
+    return null;
+  };
 
   for (const [key, value] of Object.entries(data)) {
     if (key === "menu_choices") {
@@ -867,24 +915,29 @@ function handleIncoming(data) {
   }
   state.inOwnAircraft = Boolean(
     state.aircraftModel && state.vehicle && state.vehicle !== "onFoot" &&
-      state.vehicle === state.aircraftModel
+      String(state.vehicle).toLowerCase() === String(state.aircraftModel).toLowerCase()
   );
 
   // Position
-  if (typeof data.pos_x === "number") state.pos.x = data.pos_x;
-  if (typeof data.pos_y === "number") state.pos.y = data.pos_y;
+  const posX = toFiniteNumber(data.pos_x);
+  const posY = toFiniteNumber(data.pos_y);
+  if (posX != null) state.pos.x = posX;
+  if (posY != null) state.pos.y = posY;
 
   // Landing gear
   if (typeof data.landing_gear === "string") state.landingGear = data.landing_gear;
 
   // Weight / inventory
-  if (typeof data.weight === "number") state.weight = data.weight;
-  if (typeof data.max_weight === "number") state.maxWeight = data.max_weight;
+  const weight = toFiniteNumber(data.weight);
+  const maxWeight = toFiniteNumber(data.max_weight);
+  if (weight != null) state.weight = weight;
+  if (maxWeight != null) state.maxWeight = maxWeight;
   const inv = parseInventory(data.inventory);
   if (inv) state.inventoryObj = inv;
 
   // BXP
-  if (typeof data[BXP_KEY] === "number") state.bxp = data[BXP_KEY];
+  const bxp = toFiniteNumber(data[BXP_KEY]);
+  if (bxp != null) state.bxp = bxp;
 
   // Triggers (game sends as trigger_<name>; detect edge per pizza-job pattern)
   handleTrigger(NEXT_LEG_TRIGGER, () => advanceLeg(false));
@@ -892,7 +945,7 @@ function handleIncoming(data) {
   handleTrigger(GEAR_TRIGGER, toggleLandingGear);
 
   // Auto advance
-  if (state.isPilotJob && !state.onFoot) advanceLegIfArrived();
+  if (state.isPilotJob && state.inOwnAircraft) advanceLegIfArrived();
 
   // Menu re-check in case choices arrived after menu_open in a later payload.
   // Guarded by state.menuSessionAutomated so we don't re-fire per poll.
