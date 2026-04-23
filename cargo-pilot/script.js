@@ -128,17 +128,26 @@ function loadPanelLayouts() {
 }
 
 function savePanelLayouts() {
-  const payload = {};
+  // Preserve previously saved geometry for hidden panels; getBoundingClientRect
+  // returns zeros when display:none, which would otherwise clobber the user's
+  // arrangement on the next reload.
+  const payload = loadJSON(STORAGE.panels, {});
   for (const id of PANEL_IDS) {
     const el = document.getElementById(id);
     if (!el) continue;
+    const isHidden = el.classList.contains("hidden");
+    if (isHidden) {
+      if (payload[id]) payload[id].visible = false;
+      else payload[id] = { visible: false };
+      continue;
+    }
     const rect = el.getBoundingClientRect();
     payload[id] = {
       x: rect.left,
       y: rect.top,
       w: rect.width,
       h: rect.height,
-      visible: !el.classList.contains("hidden")
+      visible: true
     };
   }
   saveJSON(STORAGE.panels, payload);
@@ -240,8 +249,8 @@ function cycleOpacity() {
   applyOpacity();
 }
 function applyOpacity() {
-  const base = state.settings.bgOpacity || 0.85;
-  const mul = OPACITY_LEVELS[state.opacityIdx] || 1;
+  const base = state.settings.bgOpacity ?? 0.85;
+  const mul = OPACITY_LEVELS[state.opacityIdx] ?? 1;
   document.documentElement.style.setProperty("--cp-bg-opacity", String(base * mul));
 }
 
@@ -250,13 +259,13 @@ function applyTheme() {
   document.documentElement.setAttribute("data-theme", state.settings.theme);
 }
 function applyFontScale() {
-  const s = Math.max(0.85, Math.min(1.6, state.settings.fontScale || 1));
+  const s = Math.max(0.85, Math.min(1.6, state.settings.fontScale ?? 1));
   document.documentElement.style.setProperty("--cp-font-scale", String(s));
   const el = document.getElementById("cp-font-val");
   if (el) el.textContent = Math.round(s * 100) + "%";
 }
 function applyBgOpacity() {
-  const o = Math.max(0, Math.min(1, state.settings.bgOpacity || 0.85));
+  const o = Math.max(0, Math.min(1, state.settings.bgOpacity ?? 0.85));
   const el = document.getElementById("cp-bg-val");
   if (el) el.textContent = Math.round(o * 100) + "%";
   applyOpacity();
