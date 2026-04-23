@@ -22,6 +22,8 @@ const NUI_IDLE_POLL_INTERVAL_MS = 6000;
 const NUI_HIDDEN_POLL_INTERVAL_MS = 10000;
 const USER_ACTIVITY_TIMEOUT_MS = 120000;
 const LEADERBOARD_REQUEST_TIMEOUT_MS = 5000;
+const LEADERBOARD_REFRESH_MIN_MS = 60000;
+const LEADERBOARD_MANUAL_REFRESH_COOLDOWN_MS = 30000;
 const VEHICLE_TRUNK_REFRESH_COOLDOWN_MS = 800;
 const TYCOON_OPEN_TRUNK_COMMANDS = ["rm_trunk", "rm_cabtrunk"];
 const DEBUG_PIN_XOR_KEY = 0x53;
@@ -481,6 +483,33 @@ let renderQueued = false;
 let passivePollTimer = 0;
 let nuiPollTimer = 0;
 let leaderboardPollTimer = 0;
+let leaderboardManualRefreshCooldownUntil = 0;
+let leaderboardManualRefreshCooldownTimer = 0;
+
+function isLeaderboardFetchAllowedByVisibility() {
+	return Boolean(state.isPizzaDeliveryActive || (refs.app && !refs.app.classList.contains("hidden")));
+}
+
+function setLeaderboardRefreshNowButtonCooldown(cooldownMs = LEADERBOARD_MANUAL_REFRESH_COOLDOWN_MS) {
+	if (!refs.leaderboardRefreshNowBtn) {
+		return;
+	}
+
+	leaderboardManualRefreshCooldownUntil = Date.now() + cooldownMs;
+	refs.leaderboardRefreshNowBtn.disabled = true;
+	refs.leaderboardRefreshNowBtn.textContent = "Refresh Leaderboard (Cooldown)";
+
+	window.clearTimeout(leaderboardManualRefreshCooldownTimer);
+	leaderboardManualRefreshCooldownTimer = window.setTimeout(() => {
+		leaderboardManualRefreshCooldownUntil = 0;
+		if (!refs.leaderboardRefreshNowBtn) {
+			return;
+		}
+
+		refs.leaderboardRefreshNowBtn.disabled = false;
+		refs.leaderboardRefreshNowBtn.textContent = "Refresh Leaderboard Now";
+	}, cooldownMs);
+}
 
 function getLeaderboardConfig() {
 	const statName = PIZZA_LEADERBOARD_CONFIG.statName;
@@ -488,7 +517,7 @@ function getLeaderboardConfig() {
 		typeof state.settings.leaderboardApiKey === "string" ? state.settings.leaderboardApiKey.trim() : "";
 	const refreshIntervalMs = clamp(
 		Number(state.settings.leaderboardRefreshIntervalMs) || PIZZA_LEADERBOARD_CONFIG.refreshIntervalMs,
-		10000,
+		LEADERBOARD_REFRESH_MIN_MS,
 		600000
 	);
 
@@ -617,13 +646,19 @@ async function fetchPizzaLeaderboard(force = false, isManual = false) {
 		return;
 	}
 
+	if (!isLeaderboardFetchAllowedByVisibility()) {
+		state.leaderboard.status = "Leaderboard paused while app is hidden.";
+		render();
+		return;
+	}
+
 	if (config.manualOnly && !isManual) {
 		state.leaderboard.status = "Manual refresh enabled in settings to save API key usage.";
 		render();
 		return;
 	}
 
-	const refreshIntervalMs = Math.max(10000, Number(config.refreshIntervalMs) || 90000);
+	const refreshIntervalMs = Math.max(LEADERBOARD_REFRESH_MIN_MS, Number(config.refreshIntervalMs) || 300000);
 	const now = Date.now();
 	if (!force && (state.leaderboard.isLoading || now - state.leaderboard.lastFetchAt < refreshIntervalMs)) {
 		return;
@@ -1717,7 +1752,7 @@ function loadSettings() {
 			state.settings.leaderboardApiKey = parsed.leaderboardApiKey;
 		}
 		if (typeof parsed.leaderboardRefreshIntervalMs === "number") {
-			state.settings.leaderboardRefreshIntervalMs = clamp(parsed.leaderboardRefreshIntervalMs, 10000, 600000);
+			state.settings.leaderboardRefreshIntervalMs = clamp(parsed.leaderboardRefreshIntervalMs, LEADERBOARD_REFRESH_MIN_MS, 600000);
 		}
 		if (typeof parsed.leaderboardManualOnly === "boolean") {
 			state.settings.leaderboardManualOnly = parsed.leaderboardManualOnly;
@@ -4091,7 +4126,7 @@ function renderNow() {
 	}
 	if (refs.leaderboardRefreshSecondsInput && document.activeElement !== refs.leaderboardRefreshSecondsInput) {
 		refs.leaderboardRefreshSecondsInput.value = String(
-			Math.round(clamp(Number(state.settings.leaderboardRefreshIntervalMs) || 300000, 10000, 600000) / 1000)
+			Math.round(clamp(Number(state.settings.leaderboardRefreshIntervalMs) || 300000, LEADERBOARD_REFRESH_MIN_MS, 600000) / 1000)
 		);
 	}
 	if (refs.leaderboardManualOnlyCheckbox) {
@@ -4449,9 +4484,9 @@ function setupEventHandlers() {
 		if (refs.leaderboardRefreshSecondsInput) {
 			const nextSeconds = clamp(
 				Number.isNaN(Number(refs.leaderboardRefreshSecondsInput.value))
-					? 90
+					? 300
 					: Number(refs.leaderboardRefreshSecondsInput.value),
-				10,
+				60,
 				600
 			);
 			refs.leaderboardRefreshSecondsInput.value = String(Math.round(nextSeconds));
@@ -4485,7 +4520,19 @@ function setupEventHandlers() {
 
 	if (refs.leaderboardRefreshNowBtn) {
 		refs.leaderboardRefreshNowBtn.addEventListener("click", () => {
+			const remainingMs = leaderboardManualRefreshCooldownUntil - Date.now();
+			if (remainingMs > 0) {
+				showToast(`Please wait ${Math.ceil(remainingMs / 1000)}s before refreshing again.`, 1600);
+				return;
+			}
+
+			if (!isLeaderboardFetchAllowedByVisibility()) {
+				showToast("Open the Pizza Job app before refreshing leaderboard.", 1800);
+				return;
+			}
+
 			applyLeaderboardSettingsFromInputs(false);
+			setLeaderboardRefreshNowButtonCooldown();
 			fetchPizzaLeaderboard(true, true);
 			showToast("Refreshing leaderboard...", 1200);
 		});
@@ -4792,9 +4839,9 @@ function scheduleLeaderboardPoll() {
 		return;
 	}
 
-	const refreshIntervalMs = Math.max(10000, Number(config.refreshIntervalMs) || 300000);
+	const refreshIntervalMs = Math.max(LEADERBOARD_REFRESH_MIN_MS, Number(config.refreshIntervalMs) || 300000);
 	leaderboardPollTimer = window.setTimeout(() => {
-		const shouldFetch = state.isPizzaDeliveryActive || (refs.app && !refs.app.classList.contains("hidden"));
+		const shouldFetch = isLeaderboardFetchAllowedByVisibility();
 		if (shouldFetch) {
 			fetchPizzaLeaderboard(false, false);
 		}
@@ -4807,7 +4854,9 @@ function startAdaptiveIntegrationPolling() {
 	requestPassiveTycoonState("initial-load");
 	schedulePassiveIntegrationPoll();
 	scheduleNuiIntegrationPoll();
-	fetchPizzaLeaderboard(true, false);
+	if (isLeaderboardFetchAllowedByVisibility()) {
+		fetchPizzaLeaderboard(true, false);
+	}
 	scheduleLeaderboardPoll();
 }
 
