@@ -303,10 +303,20 @@ const UI_THEME_ALERT_PRESETS = {
 	}
 };
 
+/**
+ * Generates a random order ID between 1000 and 9999.
+ * Used to create unique identifiers for pizza delivery orders.
+ * @returns {number} A random order ID in the range [1000, 9999]
+ */
 function generateRandomOrderId() {
 	return Math.floor(Math.random() * 9000) + 1000;
 }
 
+/**
+ * Creates an empty tracked item inventory table with all items initialized to 0.
+ * Represents quantities of pizzas, nuggets, fries, etc. in an order or trunk.
+ * @returns {Object} An object with each tracked item name mapped to 0
+ */
 function createEmptyTrackedItemTable() {
 	return TRACKED_ITEMS.reduce((table, item) => {
 		table[item] = 0;
@@ -314,6 +324,12 @@ function createEmptyTrackedItemTable() {
 	}, {});
 }
 
+/**
+ * Creates a table of low-stock threshold values for each tracked item.
+ * Used to determine when to display low-stock warnings in the UI.
+ * @param {number} [defaultValue=5] - The threshold value to assign to each item
+ * @returns {Object} An object with each tracked item name mapped to the threshold value
+ */
 function createDefaultThresholdTable(defaultValue = 5) {
 	return TRACKED_ITEMS.reduce((table, item) => {
 		table[item] = defaultValue;
@@ -321,22 +337,34 @@ function createDefaultThresholdTable(defaultValue = 5) {
 	}, {});
 }
 
+/**
+ * Initializes the Tycoon trunk state object with default values.
+ * Tracks menu state, chest selection, and interaction history for trunk operations.
+ * @returns {Object} An object containing initial trunk state properties
+ */
 function createInitialTycoonTrunkState() {
 	return {
-		activeChestId: null,
-		menuOpen: false,
-		menuName: "",
-		menuChoices: [],
-		layoutOrder: [],
-		promptOpen: false,
-		lastMenuChoice: "",
-		lastMenuChoiceAt: 0,
-		lastTakeItem: "",
-		lastTakeAt: 0,
-		busy: false
+		activeChestId: null,      // Current selected chest identifier
+		menuOpen: false,          // Whether the trunk menu is displayed
+		menuName: "",             // Name of the active menu
+		menuChoices: [],          // Available choices in current menu
+		layoutOrder: [],          // Order of items in the chest layout
+		promptOpen: false,        // Whether a prompt dialog is open
+		lastMenuChoice: "",       // Last menu option selected
+		lastMenuChoiceAt: 0,      // Timestamp of last menu choice
+		lastTakeItem: "",         // Last item taken from trunk
+		lastTakeAt: 0,            // Timestamp of last item taken
+		busy: false               // Whether trunk is processing an action
 	};
 }
 
+/**
+ * Checks if an object has a property, using Object.prototype.hasOwnProperty.call().
+ * Safely checks for own properties even if the object has overridden hasOwnProperty.
+ * @param {Object} objectValue - The object to check
+ * @param {string} key - The property name to check for
+ * @returns {boolean} True if the object has the property, false otherwise
+ */
 function hasOwn(objectValue, key) {
 	return Object.prototype.hasOwnProperty.call(objectValue, key);
 }
@@ -486,20 +514,38 @@ let leaderboardPollTimer = 0;
 let leaderboardManualRefreshCooldownUntil = 0;
 let leaderboardManualRefreshCooldownTimer = 0;
 
+/**
+ * Determines if the leaderboard can be fetched based on visibility and activity state.
+ * Leaderboard fetching is only allowed when the pizza delivery job is active 
+ * or when the app window is visible (not hidden).
+ * @returns {boolean} True if leaderboard can be fetched, false otherwise
+ */
 function isLeaderboardFetchAllowedByVisibility() {
 	return Boolean(state.isPizzaDeliveryActive || (refs.app && !refs.app.classList.contains("hidden")));
 }
 
+/**
+ * Applies a cooldown timer to the "Refresh Leaderboard Now" button.
+ * Prevents rapid manual refresh requests by disabling the button and displaying 
+ * remaining cooldown time. Automatically re-enables button after cooldown expires.
+ * @param {number} [cooldownMs=LEADERBOARD_MANUAL_REFRESH_COOLDOWN_MS] - Cooldown duration in milliseconds
+ */
 function setLeaderboardRefreshNowButtonCooldown(cooldownMs = LEADERBOARD_MANUAL_REFRESH_COOLDOWN_MS) {
 	if (!refs.leaderboardRefreshNowBtn) {
 		return;
 	}
 
+	// Record cooldown expiration time for UI validation
 	leaderboardManualRefreshCooldownUntil = Date.now() + cooldownMs;
+	
+	// Disable button and update label
 	refs.leaderboardRefreshNowBtn.disabled = true;
 	refs.leaderboardRefreshNowBtn.textContent = "Refresh Leaderboard (Cooldown)";
 
+	// Clear any existing cooldown timer to prevent timer conflicts
 	window.clearTimeout(leaderboardManualRefreshCooldownTimer);
+	
+	// Schedule button re-enable after cooldown expires
 	leaderboardManualRefreshCooldownTimer = window.setTimeout(() => {
 		leaderboardManualRefreshCooldownUntil = 0;
 		if (!refs.leaderboardRefreshNowBtn) {
@@ -511,14 +557,21 @@ function setLeaderboardRefreshNowButtonCooldown(cooldownMs = LEADERBOARD_MANUAL_
 	}, cooldownMs);
 }
 
+/**
+ * Retrieves the current leaderboard configuration from state and constants.
+ * Merges user settings with defaults and applies validation/clamping.
+ * @returns {Object} Object containing leaderboard API configuration and settings
+ */
 function getLeaderboardConfig() {
 	const statName = PIZZA_LEADERBOARD_CONFIG.statName;
 	const apiKey =
 		typeof state.settings.leaderboardApiKey === "string" ? state.settings.leaderboardApiKey.trim() : "";
+	
+	// Clamp refresh interval to min 1 minute (60000ms) and max 10 minutes (600000ms)
 	const refreshIntervalMs = clamp(
 		Number(state.settings.leaderboardRefreshIntervalMs) || PIZZA_LEADERBOARD_CONFIG.refreshIntervalMs,
 		LEADERBOARD_REFRESH_MIN_MS,
-		600000
+		1800000
 	);
 
 	return {
@@ -531,6 +584,12 @@ function getLeaderboardConfig() {
 	};
 }
 
+/**
+ * Formats a number for display on the leaderboard with locale-specific formatting.
+ * Returns a placeholder string if the value is not a valid finite number.
+ * @param {*} value - The numeric value to format
+ * @returns {string} Formatted number string with thousands separators, or '--' if invalid
+ */
 function formatLeaderboardNumber(value) {
 	const numeric = Number(value);
 	if (!Number.isFinite(numeric)) {
@@ -540,11 +599,18 @@ function formatLeaderboardNumber(value) {
 	return numeric.toLocaleString();
 }
 
+/**
+ * Normalizes raw leaderboard entry data from API into consistent objects.
+ * Validates each entry's structure and numeric values, filtering out invalid entries.
+ * @param {Array} rawTop - Raw leaderboard entries from the API
+ * @returns {Array} Array of normalized leaderboard entry objects with validated fields
+ */
 function normalizeLeaderboardEntries(rawTop) {
 	if (!Array.isArray(rawTop)) {
 		return [];
 	}
 
+	// Transform and validate each entry
 	return rawTop
 		.map((entry) => {
 			if (!entry || typeof entry !== "object") {
@@ -561,25 +627,35 @@ function normalizeLeaderboardEntries(rawTop) {
 				amount: Number.isFinite(amount) ? amount : 0
 			};
 		})
+		// Remove null entries that failed validation
 		.filter(Boolean);
 }
 
+/**
+ * Resolves the current player's rank and score from a leaderboard entry list.
+ * Attempts to find the player by ID first, then falls back to username matching.
+ * @param {Array} entries - Normalized leaderboard entries to search
+ * @returns {Object} Object with rank (1-based, or null) and amount properties
+ */
 function resolveYourLeaderboardPosition(entries) {
 	if (!Array.isArray(entries) || entries.length === 0) {
 		return { rank: null, amount: null };
 	}
 
+	// Try to find player by ID first (more reliable than name)
 	const byIdIndex =
 		Number.isFinite(state.playerId) && state.playerId > 0
 			? entries.findIndex((entry) => Number(entry.userId) === Number(state.playerId))
 			: -1;
+	
 	if (byIdIndex >= 0) {
 		return {
-			rank: byIdIndex + 1,
+			rank: byIdIndex + 1,  // Convert 0-based index to 1-based rank
 			amount: entries[byIdIndex].amount
 		};
 	}
 
+	// Fallback: search by player name (case-insensitive)
 	const normalizedPlayerName = typeof state.playerName === "string" ? state.playerName.trim().toLowerCase() : "";
 	if (!normalizedPlayerName) {
 		return { rank: null, amount: null };
@@ -595,16 +671,23 @@ function resolveYourLeaderboardPosition(entries) {
 	}
 
 	return {
-		rank: byNameIndex + 1,
+		rank: byNameIndex + 1,  // Convert 0-based index to 1-based rank
 		amount: entries[byNameIndex].amount
 	};
 }
 
+/**
+ * Extracts player identity (ID and name) from a Tycoon payload object.
+ * Searches multiple likely property paths for user ID and name fields.
+ * Updates global state if new player identity is found, triggering re-render.
+ * @param {*} payload - The data payload to extract player identity from
+ */
 function extractPlayerIdentityFromPayload(payload) {
 	if (!payload || typeof payload !== "object") {
 		return;
 	}
 
+	// Check multiple possible sources within payload structure
 	const candidateObjects = [payload, payload.player, payload.user, payload.character].filter(
 		(entry) => entry && typeof entry === "object"
 	);
@@ -612,6 +695,7 @@ function extractPlayerIdentityFromPayload(payload) {
 	let nextPlayerId = state.playerId;
 	let nextPlayerName = state.playerName;
 
+	// Scan candidate objects for user ID using common field names
 	for (const source of candidateObjects) {
 		for (const key of ["user_id", "vrpid", "vrp_id", "player_id", "id"]) {
 			const parsed = Number(source[key]);
@@ -621,6 +705,7 @@ function extractPlayerIdentityFromPayload(payload) {
 			}
 		}
 
+		// Scan for player name using common field names
 		for (const key of ["username", "player_name", "name"]) {
 			if (typeof source[key] === "string" && source[key].trim()) {
 				nextPlayerName = source[key].trim();
@@ -629,6 +714,7 @@ function extractPlayerIdentityFromPayload(payload) {
 		}
 	}
 
+	// Only update state if values actually changed
 	if (nextPlayerId === state.playerId && nextPlayerName === state.playerName) {
 		return;
 	}
@@ -638,45 +724,64 @@ function extractPlayerIdentityFromPayload(payload) {
 	render();
 }
 
+/**
+ * Fetches the pizza delivery leaderboard from the remote API.
+ * Implements refresh rate limiting, visibility checks, and manual-only mode.
+ * Normalizes response data, resolves player position, and updates UI state.
+ * Handles network errors and timeouts gracefully with user-friendly error messages.
+ * @param {boolean} [force=false] - If true, bypasses refresh rate limiting
+ * @param {boolean} [isManual=false] - If true, bypasses manual-only mode restriction
+ * @returns {Promise<void>}
+ */
 async function fetchPizzaLeaderboard(force = false, isManual = false) {
 	const config = getLeaderboardConfig();
+	
+	// Validate configuration before attempting fetch
 	if (!config.enabled || !config.apiBaseUrl || !config.statName) {
 		state.leaderboard.status = "Configure leaderboard API base and stat name in Settings.";
 		render();
 		return;
 	}
 
+	// Check if app is visible - skip fetch if hidden to reduce API usage
 	if (!isLeaderboardFetchAllowedByVisibility()) {
 		state.leaderboard.status = "Leaderboard paused while app is hidden.";
 		render();
 		return;
 	}
 
+	// Respect manual-only mode unless explicitly forced
 	if (config.manualOnly && !isManual) {
 		state.leaderboard.status = "Manual refresh enabled in settings to save API key usage.";
 		render();
 		return;
 	}
 
+	// Check refresh rate limits to avoid excessive API requests
 	const refreshIntervalMs = Math.max(LEADERBOARD_REFRESH_MIN_MS, Number(config.refreshIntervalMs) || 300000);
 	const now = Date.now();
 	if (!force && (state.leaderboard.isLoading || now - state.leaderboard.lastFetchAt < refreshIntervalMs)) {
 		return;
 	}
 
+	// Mark loading state and record fetch time
 	state.leaderboard.isLoading = true;
 	state.leaderboard.lastFetchAt = now;
 	state.leaderboard.status = "Refreshing leaderboard...";
 	render();
 
+	// Construct API endpoint URL with encoded stat name
 	const baseUrl = String(config.apiBaseUrl).replace(/\/$/, "");
 	const statName = encodeURIComponent(String(config.statName));
 	const url = `${baseUrl}/top10/${statName}`;
+	
+	// Build request headers, including API key if configured
 	const headers = {};
 	if (typeof config.apiKey === "string" && config.apiKey.trim()) {
 		headers["X-Tycoon-Key"] = config.apiKey.trim();
 	}
 
+	// Set up request timeout to prevent hanging requests
 	const controller = new AbortController();
 	const timeoutHandle = window.setTimeout(() => {
 		controller.abort();
@@ -697,6 +802,7 @@ async function fetchPizzaLeaderboard(force = false, isManual = false) {
 		const allEntries = normalizeLeaderboardEntries(payload.top);
 		const yourPosition = resolveYourLeaderboardPosition(allEntries);
 
+		// Store top 3 entries for display, resolve player's rank
 		state.leaderboard.top = allEntries.slice(0, 3);
 		state.leaderboard.yourRank = yourPosition.rank;
 		state.leaderboard.yourAmount = yourPosition.amount;
@@ -706,21 +812,33 @@ async function fetchPizzaLeaderboard(force = false, isManual = false) {
 				? `Top ${Math.min(3, allEntries.length)} loaded (${new Date(state.leaderboard.lastUpdatedAt).toLocaleTimeString()}).`
 				: "Leaderboard returned no entries.";
 	} catch (error) {
+		// Clear leaderboard on error and show status message
 		state.leaderboard.top = [];
 		state.leaderboard.yourRank = null;
 		state.leaderboard.yourAmount = null;
 		state.leaderboard.status = `Leaderboard unavailable (${error && error.message ? error.message : "request failed"}).`;
 	} finally {
+		// Clean up: clear timeout and restore loading state
 		window.clearTimeout(timeoutHandle);
 		state.leaderboard.isLoading = false;
 		render();
 	}
 }
 
+/**
+ * Decodes the obfuscated debug PIN using XOR deobfuscation.
+ * Each byte is XORed with DEBUG_PIN_XOR_KEY to recover the original character.
+ * @returns {string} The decoded debug PIN
+ */
 function readDebugPin() {
 	return DEBUG_PIN_OBFUSCATED.map((value) => String.fromCharCode(value ^ DEBUG_PIN_XOR_KEY)).join("");
 }
 
+/**
+ * Opens or closes the debug PIN entry panel.
+ * Clears previous PIN input and optionally focuses the input field when opening.
+ * @param {boolean} isOpen - Whether to show (true) or hide (false) the PIN panel
+ */
 function setDebugPinPanelOpen(isOpen) {
 	if (!refs.debugPinPanel) {
 		return;
@@ -730,6 +848,8 @@ function setDebugPinPanelOpen(isOpen) {
 	if (!isOpen) {
 		shouldOpenDebugAfterPin = false;
 	}
+	
+	// Clear and focus input when opening
 	if (isOpen && refs.debugPinInput) {
 		refs.debugPinInput.value = "";
 		window.setTimeout(() => {
@@ -738,12 +858,18 @@ function setDebugPinPanelOpen(isOpen) {
 	}
 }
 
+/**
+ * Requests access to the debug panel, requiring PIN authentication on first attempt.
+ * If already unlocked, toggles panel visibility. Otherwise, opens PIN entry interface.
+ */
 function requestDebugPanelAccess() {
+	// If already unlocked, just toggle visibility
 	if (isDebugPanelUnlocked) {
 		setDebugPanelOpen(refs.debugPanel.classList.contains("hidden"));
 		return;
 	}
 
+	// Validate required DOM elements before proceeding
 	if (!refs.debugPinPanel || !refs.debugPinInput || !refs.debugPinSubmitBtn || !refs.debugPinCancelBtn) {
 		showToast("Debug PIN window failed to load. Reload app.", 2400);
 		return;
@@ -753,12 +879,21 @@ function requestDebugPanelAccess() {
 	setDebugPinPanelOpen(true);
 }
 
+/**
+ * Validates the debug PIN entry and grants access to debug panel if correct.
+ * On success, unlocks debug panel and optionally opens it (if requested).
+ * On failure, clears input field and shows error message.
+ */
 function submitDebugPin() {
 	const attempt = refs.debugPinInput ? refs.debugPinInput.value.trim() : "";
+	
+	// Validate PIN against decoded obfuscated PIN
 	if (attempt === readDebugPin()) {
 		isDebugPanelUnlocked = true;
 		setDebugPinPanelOpen(false);
 		showToast("Debug access granted.", 1800);
+		
+		// Open debug panel if requested before PIN unlock
 		if (shouldOpenDebugAfterPin) {
 			setDebugPanelOpen(true);
 		}
@@ -766,6 +901,7 @@ function submitDebugPin() {
 		return;
 	}
 
+	// Invalid PIN: clear and focus input for retry
 	showToast("Invalid PIN.", 1800);
 	if (refs.debugPinInput) {
 		refs.debugPinInput.value = "";
@@ -773,26 +909,47 @@ function submitDebugPin() {
 	}
 }
 
+/**
+ * Normalizes a job name by trimming whitespace and converting to lowercase.
+ * Used for consistent job name comparisons.
+ * @param {*} jobName - The job name to normalize
+ * @returns {string} The normalized job name, or empty string if not a string
+ */
 function normalizeJobName(jobName) {
 	return typeof jobName === "string" ? jobName.trim().toLowerCase() : "";
 }
 
+/**
+ * Checks if a job name represents the pizza delivery job.
+ * Performs case-insensitive matching against the expected job name.
+ * Also checks for partial matches to handle job names with suffixes/prefixes.
+ * @param {*} jobName - The job name to check
+ * @returns {boolean} True if the job name is pizza delivery, false otherwise
+ */
 function isPizzaDeliveryJobName(jobName) {
 	const normalized = normalizeJobName(jobName);
 	if (!normalized) {
 		return false;
 	}
 
+	// Exact match
 	if (normalized === PIZZA_DELIVERY_JOB_NAME) {
 		return true;
 	}
 
-	// Some payloads include suffixes/prefixes in job_title.
+	// Partial match: Some payloads include suffixes/prefixes in job_title
 	return normalized.includes(PIZZA_DELIVERY_JOB_NAME);
 }
 
+/**
+ * Sets the visibility of the pizza job app window.
+ * Hides related UI panels (settings, confirmations, tooltips, debug) when hiding the main app.
+ * @param {boolean} isVisible - Whether to show (true) or hide (false) the app
+ */
 function setPizzaJobAppVisible(isVisible) {
 	refs.app.classList.toggle("hidden", !isVisible);
+	
+	// Clean up related UI when hiding main app
 	if (!isVisible) {
 		if (refs.settingsPanel) {
 			refs.settingsPanel.classList.add("hidden");
@@ -804,12 +961,24 @@ function setPizzaJobAppVisible(isVisible) {
 	}
 }
 
+/**
+ * Checks if the "Take Order" action can be executed.
+ * Action is allowed when pizza delivery job is active OR app window is visible.
+ * @returns {boolean} True if take order action can run, false otherwise
+ */
 function canRunTakeOrder() {
 	const uiVisible = refs.app ? !refs.app.classList.contains("hidden") : false;
 	return state.isPizzaDeliveryActive || uiVisible;
 }
 
+/**
+ * Requests passive state data from the Tycoon parent frame via postMessage.
+ * Sends two separate requests: one for general data, one for marker-related data.
+ * Uses window.parent to communicate with hosting application.
+ * @param {string} [reason="job-state"] - Descriptive reason for the request (used in debugging)
+ */
 function requestPassiveTycoonState(reason = "job-state") {
+	// Request general state data
 	window.parent.postMessage(
 		{
 			type: "getData",
@@ -818,6 +987,7 @@ function requestPassiveTycoonState(reason = "job-state") {
 		"*"
 	);
 
+	// Request marker and waypoint data for mission tracking
 	window.parent.postMessage(
 		{
 			type: "getNamedData",
@@ -828,12 +998,19 @@ function requestPassiveTycoonState(reason = "job-state") {
 	);
 }
 
+/**
+ * Updates the player's current job state and triggers appropriate UI/state changes.
+ * When pizza delivery job becomes active, shows app and requests fresh data.
+ * When job ends, resets runtime state and hides the app.
+ * @param {string} jobName - The name of the job to set (will be normalized)
+ */
 function setPlayerJobState(jobName) {
 	const normalizedJobName = normalizeJobName(jobName);
 	const isPizzaDeliveryActive = isPizzaDeliveryJobName(normalizedJobName);
 	const jobChanged = normalizedJobName !== state.playerJobName;
 	const activeChanged = isPizzaDeliveryActive !== state.isPizzaDeliveryActive;
 
+	// Early return if nothing changed
 	if (!jobChanged && !activeChanged) {
 		return;
 	}
@@ -841,14 +1018,17 @@ function setPlayerJobState(jobName) {
 	state.playerJobName = normalizedJobName;
 	state.isPizzaDeliveryActive = isPizzaDeliveryActive;
 
+	// Clean up when pizza job ends
 	if (!isPizzaDeliveryActive) {
 		resetPizzaJobRuntimeState();
 		setPizzaJobAppVisible(false);
 		return;
 	}
 
+	// Activate pizza job UI
 	setPizzaJobAppVisible(true);
 
+	// Fetch fresh data when pizza job transitions from inactive to active
 	if (activeChanged) {
 		requestNuiData();
 		refreshVehicleTrunkInventory("job-activated");
@@ -857,21 +1037,35 @@ function setPlayerJobState(jobName) {
 	}
 }
 
+/**
+ * Extracts job name from a payload object and updates player job state.
+ * Searches multiple common property names for job information.
+ * @param {*} payload - The data payload to extract job name from
+ */
 function updatePlayerJobStateFromPayload(payload) {
 	if (!payload || typeof payload !== "object") {
 		return;
 	}
 
+	// Search for job name in multiple common property names
 	const nextJobName =
 		normalizeJobName(payload.job_name) ||
 		normalizeJobName(payload.job_title) ||
 		normalizeJobName(payload.job);
+	
 	if (nextJobName) {
 		setPlayerJobState(nextJobName);
 	}
 }
 
+/**
+ * Resets all pizza job runtime state to initial values.
+ * Generates new order ID, clears inventory, trunk, and order data.
+ * Resets trunk interaction history and signals parent frame to clear waypoint.
+ * Called when pizza delivery job ends or is reset.
+ */
 function resetPizzaJobRuntimeState() {
+	// Reset order and inventory state
 	state.orderId = generateRandomOrderId();
 	state.order = createEmptyTrackedItemTable();
 	state.trunk = createEmptyTrackedItemTable();
@@ -881,6 +1075,8 @@ function resetPizzaJobRuntimeState() {
 	state.tycoonTrunk = createInitialTycoonTrunkState();
 	state.settings.gpsX = null;
 	state.settings.gpsY = null;
+	
+	// Reset interaction tracking
 	lastVehicleTrunkRefreshAt = 0;
 	lastInVehicleState = null;
 	lastTycoonPromptSeenAt = 0;
@@ -888,15 +1084,19 @@ function resetPizzaJobRuntimeState() {
 	lastCircleTriggerValue = null;
 	hasSeenCircleTriggerValue = false;
 	lastCircleTriggerAt = 0;
+	
 	saveSettings();
 	render();
 
+	// Signal parent frame to clear waypoint (Tycoon/FiveM integration)
 	if (!window.GetParentResourceName) {
 		return;
 	}
 
 	const payload = { type: "clearWaypoint" };
 	window.parent.postMessage(payload, "*");
+	
+	// Attempt fetch-based clearWaypoint for resource-based communication
 	const resourceName = window.GetParentResourceName();
 	fetch(`https://${resourceName}/clearWaypoint`, {
 		method: "POST",
@@ -905,10 +1105,17 @@ function resetPizzaJobRuntimeState() {
 		},
 		body: JSON.stringify(payload)
 	}).catch(() => {
-		// Ignore endpoint errors during local browser testing.
+		// Ignore endpoint errors during local browser testing
 	});
 }
 
+/**
+ * Checks if two order objects have equal item quantities.
+ * Compares all tracked items numerically between two order objects.
+ * @param {*} leftOrder - First order object to compare
+ * @param {*} rightOrder - Second order object to compare
+ * @returns {boolean} True if all items have equal quantities, false otherwise
+ */
 function ordersEqual(leftOrder, rightOrder) {
 	if (!leftOrder || !rightOrder) {
 		return false;
@@ -917,6 +1124,13 @@ function ordersEqual(leftOrder, rightOrder) {
 	return TRACKED_ITEMS.every((item) => Number(leftOrder[item]) === Number(rightOrder[item]));
 }
 
+/**
+ * Checks if two trunk objects have equal item quantities.
+ * Compares all tracked items numerically between two trunk inventory objects.
+ * @param {*} leftTrunk - First trunk object to compare
+ * @param {*} rightTrunk - Second trunk object to compare
+ * @returns {boolean} True if all items have equal quantities, false otherwise
+ */
 function trunksEqual(leftTrunk, rightTrunk) {
 	if (!leftTrunk || !rightTrunk) {
 		return false;
@@ -925,10 +1139,25 @@ function trunksEqual(leftTrunk, rightTrunk) {
 	return TRACKED_ITEMS.every((item) => Number(leftTrunk[item]) === Number(rightTrunk[item]));
 }
 
+/**
+ * Clamps a numeric value between minimum and maximum bounds.
+ * Returns the value constrained to the range [min, max].
+ * @param {number} value - The value to clamp
+ * @param {number} min - The minimum allowed value
+ * @param {number} max - The maximum allowed value
+ * @returns {number} The clamped value within [min, max]
+ */
 function clamp(value, min, max) {
 	return Math.min(Math.max(value, min), max);
 }
 
+/**
+ * Safely attempts to parse a value as a JSON object.
+ * Returns the object as-is if already an object, parses if a JSON string, null if unparseable.
+ * Includes guards against non-object JSON values (strings, numbers, null, etc.).
+ * @param {*} rawValue - The value to parse
+ * @returns {Object|null} The parsed/extracted object, or null if not valid JSON object
+ */
 function tryParseJsonObject(rawValue) {
 	if (rawValue && typeof rawValue === "object") {
 		return rawValue;
@@ -939,12 +1168,14 @@ function tryParseJsonObject(rawValue) {
 	}
 
 	const trimmed = rawValue.trim();
+	// Quick check: JSON objects and arrays must start with { or [
 	if (!trimmed.startsWith("{") && !trimmed.startsWith("[")) {
 		return null;
 	}
 
 	try {
 		const parsed = JSON.parse(trimmed);
+		// Ensure parsed result is an object (not primitive or null)
 		return parsed && typeof parsed === "object" ? parsed : null;
 	} catch (error) {
 		return null;
@@ -1025,15 +1256,30 @@ function resolveTrackedItemKey(rawKey) {
 	return null;
 }
 
+/**
+ * Displays a temporary toast notification message to the user.
+ * Automatically hides after specified timeout. Clears any previous toast timers.
+ * @param {string} message - The message to display in the toast
+ * @param {number} [timeoutMs=2400] - How long to show the toast before hiding (in milliseconds)
+ */
 function showToast(message, timeoutMs = 2400) {
 	refs.toast.textContent = message;
 	refs.toast.classList.remove("hidden");
+	
+	// Clear any existing toast timeout to prevent overlaps
 	window.clearTimeout(showToast.timer);
+	
+	// Schedule hide after timeout
 	showToast.timer = window.setTimeout(() => {
 		refs.toast.classList.add("hidden");
 	}, timeoutMs);
 }
 
+/**
+ * Opens or closes the window reset confirmation dialog.
+ * Updates ARIA attributes for accessibility and optionally focuses the OK button.
+ * @param {boolean} isOpen - Whether to show (true) or hide (false) the confirmation dialog
+ */
 function setResetConfirmOpen(isOpen) {
 	if (!refs.resetConfirmBackdrop) {
 		return;
@@ -1042,6 +1288,7 @@ function setResetConfirmOpen(isOpen) {
 	refs.resetConfirmBackdrop.classList.toggle("hidden", !isOpen);
 	refs.resetConfirmBackdrop.setAttribute("aria-hidden", isOpen ? "false" : "true");
 
+	// Focus OK button when opening for better keyboard navigation
 	if (isOpen && refs.resetConfirmOkBtn) {
 		window.setTimeout(() => {
 			refs.resetConfirmOkBtn.focus();
@@ -1049,42 +1296,65 @@ function setResetConfirmOpen(isOpen) {
 	}
 }
 
+/**
+ * Retrieves tooltip text for an HTML element from multiple possible sources.
+ * Searches in order: data-tooltip attribute, aria-label, title, or element text content.
+ * Returns empty string if no text is found.
+ * @param {*} element - The HTML element to extract tooltip from
+ * @returns {string} The tooltip text, or empty string if not found
+ */
 function getTooltipTextForElement(element) {
 	if (!(element instanceof HTMLElement)) {
 		return "";
 	}
 
+	// Priority 1: data-tooltip attribute (custom tooltip)
 	const dataTooltip = element.getAttribute("data-tooltip");
 	if (dataTooltip && dataTooltip.trim()) {
 		return dataTooltip.trim();
 	}
 
+	// Priority 2: aria-label (accessibility attribute)
 	const ariaLabel = element.getAttribute("aria-label");
 	if (ariaLabel && ariaLabel.trim()) {
 		return ariaLabel.trim();
 	}
 
+	// Priority 3: title attribute (native HTML tooltip)
 	const nativeTitle = element.getAttribute("title");
 	if (nativeTitle && nativeTitle.trim()) {
 		return nativeTitle.trim();
 	}
 
+	// Priority 4: element text content
 	const text = element.textContent || "";
 	return text.trim();
 }
 
+/**
+ * Calculates and applies positioning for a floating tooltip relative to a target element.
+ * Attempts to position above the target with 8px gap. Falls back to below if not enough space.
+ * Centers horizontally with viewport edge clamping to prevent overflow.
+ * @param {*} target - The HTML element the tooltip should anchor to
+ */
 function positionFloatingTooltip(target) {
 	if (!refs.floatingTooltip || !(target instanceof HTMLElement)) {
 		return;
 	}
 
+	// Get dimensions for positioning calculations
 	const rect = target.getBoundingClientRect();
 	const tooltipRect = refs.floatingTooltip.getBoundingClientRect();
-	const gap = 8;
+	const gap = 8;  // Space between tooltip and target element
+	
+	// Center horizontally on target, clamp to viewport edges
 	let left = rect.left + rect.width / 2 - tooltipRect.width / 2;
 	left = clamp(left, 8, window.innerWidth - tooltipRect.width - 8);
 
+	// Try positioning above target with gap
 	let top = rect.top - tooltipRect.height - gap;
+	
+	// If tooltip doesn't fit above, position below instead
 	if (top < 8) {
 		top = rect.bottom + gap;
 	}
@@ -1093,6 +1363,12 @@ function positionFloatingTooltip(target) {
 	refs.floatingTooltip.style.top = `${top}px`;
 }
 
+/**
+ * Shows a floating tooltip for an HTML element.
+ * Extracts tooltip text from element attributes/content and positions near target.
+ * If no tooltip text found, hides any existing tooltip instead.
+ * @param {*} target - The HTML element to show tooltip for
+ */
 function showFloatingTooltip(target) {
 	if (!refs.floatingTooltip || !(target instanceof HTMLElement)) {
 		return;
@@ -1100,17 +1376,25 @@ function showFloatingTooltip(target) {
 
 	const text = getTooltipTextForElement(target);
 	if (!text) {
+		// No tooltip text found, hide tooltip
 		hideFloatingTooltip();
 		return;
 	}
 
+	// Track active tooltip target for focus management
 	activeTooltipTarget = target;
 	refs.floatingTooltip.textContent = text;
 	refs.floatingTooltip.classList.remove("hidden");
 	refs.floatingTooltip.setAttribute("aria-hidden", "false");
+	
+	// Position tooltip relative to target element
 	positionFloatingTooltip(target);
 }
 
+/**
+ * Hides the floating tooltip and clears the active tooltip target reference.
+ * Updates ARIA attributes to reflect hidden state for accessibility.
+ */
 function hideFloatingTooltip() {
 	activeTooltipTarget = null;
 	if (!refs.floatingTooltip) {
@@ -1121,13 +1405,21 @@ function hideFloatingTooltip() {
 	refs.floatingTooltip.setAttribute("aria-hidden", "true");
 }
 
+/**
+ * Normalizes button tooltip attributes by converting title attributes to data-tooltip.
+ * Ensures all buttons use the custom data-tooltip attribute for consistent tooltip handling.
+ * Removes native title attributes after migration to avoid duplicate tooltips.
+ */
 function normalizeButtonTooltipAttributes() {
 	for (const button of document.querySelectorAll("button")) {
 		const title = button.getAttribute("title");
+		
+		// Migrate title to data-tooltip if not already set
 		if (title && !button.getAttribute("data-tooltip")) {
 			button.setAttribute("data-tooltip", title);
 		}
 
+		// Remove title attribute to prevent native browser tooltips
 		if (title) {
 			button.removeAttribute("title");
 		}
@@ -1138,6 +1430,11 @@ const DEBUG_MAX_ENTRIES = 1000;
 const DEBUG_FILTER_MODES = ["trunk", "focused", "server", "all"];
 const DEFAULT_DEBUG_FILTER_MODE = "trunk";
 
+/**
+ * Checks if verbose raw debug output is enabled.
+ * Reads setting from localStorage, returning false if storage is unavailable.
+ * @returns {boolean} True if verbose debug mode is enabled, false otherwise
+ */
 function isVerboseRawDebugEnabled() {
 	try {
 		return localStorage.getItem(VERBOSE_RAW_DEBUG_STORAGE_KEY) === "true";
@@ -1146,14 +1443,26 @@ function isVerboseRawDebugEnabled() {
 	}
 }
 
+/**
+ * Sets the verbose raw debug output mode.
+ * Persists setting to localStorage for persistence across sessions.
+ * Silently handles storage errors without affecting functionality.
+ * @param {boolean} enabled - Whether to enable (true) or disable (false) verbose debug output
+ */
 function setVerboseRawDebugEnabled(enabled) {
 	try {
 		localStorage.setItem(VERBOSE_RAW_DEBUG_STORAGE_KEY, enabled ? "true" : "false");
 	} catch (error) {
-		// Ignore storage failures.
+		// Ignore storage failures
 	}
 }
 
+/**
+ * Retrieves the current debug filter mode for log display.
+ * Checks UI select element first, then localStorage, falling back to default.
+ * Validates mode against allowed filter modes before returning.
+ * @returns {string} The current debug filter mode ("trunk", "focused", "server", or "all")
+ */
 function getDebugFilterMode() {
 	const selectedValue = refs.debugFilterSelect ? refs.debugFilterSelect.value : undefined;
 	if (DEBUG_FILTER_MODES.includes(selectedValue)) {
@@ -1168,19 +1477,33 @@ function getDebugFilterMode() {
 	}
 }
 
+/**
+ * Sets the debug filter mode for log display filtering.
+ * Validates mode against allowed modes, updating UI select and localStorage.
+ * Invalid modes default to the DEFAULT_DEBUG_FILTER_MODE.
+ * @param {string} mode - The debug filter mode to set
+ */
 function setDebugFilterMode(mode) {
 	const safeMode = DEBUG_FILTER_MODES.includes(mode) ? mode : DEFAULT_DEBUG_FILTER_MODE;
+	
+	// Update UI select element if available
 	if (refs.debugFilterSelect) {
 		refs.debugFilterSelect.value = safeMode;
 	}
 
+	// Persist to localStorage for session persistence
 	try {
 		localStorage.setItem(DEBUG_FILTER_STORAGE_KEY, safeMode);
 	} catch (error) {
-		// Ignore storage failures.
+		// Ignore storage failures
 	}
 }
 
+/**
+ * Opens or closes the debug toolbar UI element.
+ * The toolbar contains filter and verbose output controls.
+ * @param {boolean} isOpen - Whether to show (true) or hide (false) the debug toolbar
+ */
 function setDebugToolbarOpen(isOpen) {
 	if (!refs.debugToolbar) {
 		return;
@@ -1189,18 +1512,30 @@ function setDebugToolbarOpen(isOpen) {
 	refs.debugToolbar.classList.toggle("hidden", !isOpen);
 }
 
+/**
+ * Opens or closes the debug panel and manages related UI state.
+ * Also opens the debug toolbar when opening the main debug panel.
+ * Clears drag state and persists layout when closing.
+ * @param {boolean} isOpen - Whether to show (true) or hide (false) the debug panel
+ */
 function setDebugPanelOpen(isOpen) {
 	if (!refs.debugPanel) {
 		return;
 	}
 
 	refs.debugPanel.classList.toggle("hidden", !isOpen);
+	
+	// Show toolbar when opening main panel
 	if (isOpen) {
 		setDebugToolbarOpen(true);
 	}
+	
+	// Clean up dragging state when closing
 	if (!isOpen) {
 		debugPanelState.dragging = false;
 	}
+	
+	// Persist layout changes
 	saveDebugPanelLayout();
 }
 
@@ -1693,10 +2028,24 @@ function loadDebugPanelLayout() {
 	}
 }
 
+/**
+ * Persists the current settings object to browser localStorage.
+ * Uses JSON serialization to store all user preferences and configuration state.
+ * Silent failures handled gracefully by browser's localStorage implementation.
+ */
 function saveSettings() {
 	localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(state.settings));
 }
 
+/**
+ * Loads and restores user settings from browser localStorage.
+ * Includes migration logic for older setting formats and comprehensive validation:
+ * - Converts legacy lowThreshold to per-item thresholds
+ * - Validates numeric bounds (clamping to min/max values)
+ * - Checks data types before assignment
+ * - Handles JSON parse errors gracefully
+ * Silent failure on corrupted settings data with automatic cleanup.
+ */
 function loadSettings() {
 	const raw = localStorage.getItem(SETTINGS_STORAGE_KEY);
 	if (!raw) {
@@ -1705,7 +2054,10 @@ function loadSettings() {
 
 	try {
 		const parsed = JSON.parse(raw);
+		
+		// Load and migrate low stock thresholds
 		if (parsed.lowThresholdByItem && typeof parsed.lowThresholdByItem === "object") {
+			// New format: per-item thresholds
 			const nextThresholds = createDefaultThresholdTable(5);
 			for (const item of TRACKED_ITEMS) {
 				const rawValue = Number(parsed.lowThresholdByItem[item]);
@@ -1715,9 +2067,12 @@ function loadSettings() {
 			}
 			state.settings.lowThresholdByItem = nextThresholds;
 		} else if (typeof parsed.lowThreshold === "number") {
+			// Legacy format: single threshold applied to all items
 			const fallback = clamp(Math.round(parsed.lowThreshold), 1, 99);
 			state.settings.lowThresholdByItem = createDefaultThresholdTable(fallback);
 		}
+		
+		// Load UI settings with bounds validation
 		if (typeof parsed.bgOpacity === "number") {
 			state.settings.bgOpacity = clamp(parsed.bgOpacity, 0, 1);
 		}
@@ -1727,6 +2082,8 @@ function loadSettings() {
 		if (typeof parsed.fontScale === "number") {
 			state.settings.fontScale = clamp(parsed.fontScale, UI_MIN_FONT_SCALE, UI_MAX_FONT_SCALE);
 		}
+		
+		// Load panel layout settings
 		if (typeof parsed.settingsDetached === "boolean") {
 			state.settings.settingsDetached = parsed.settingsDetached;
 		}
@@ -1736,6 +2093,8 @@ function loadSettings() {
 		if (typeof parsed.settingsPanelY === "number") {
 			state.settings.settingsPanelY = parsed.settingsPanelY;
 		}
+		
+		// Load GPS/marker position settings
 		if (typeof parsed.gpsEnabled === "boolean") {
 			state.settings.gpsEnabled = parsed.gpsEnabled;
 		}
@@ -1745,9 +2104,13 @@ function loadSettings() {
 		if (typeof parsed.gpsY === "number") {
 			state.settings.gpsY = parsed.gpsY;
 		}
+		
+		// Load behavior settings
 		if (typeof parsed.autoTakeOrderOnExit === "boolean") {
 			state.settings.autoTakeOrderOnExit = parsed.autoTakeOrderOnExit;
 		}
+		
+		// Load leaderboard settings
 		if (typeof parsed.leaderboardApiKey === "string") {
 			state.settings.leaderboardApiKey = parsed.leaderboardApiKey;
 		}
@@ -1758,6 +2121,7 @@ function loadSettings() {
 			state.settings.leaderboardManualOnly = parsed.leaderboardManualOnly;
 		}
 	} catch (error) {
+		// Corrupted settings: remove and reset to defaults
 		localStorage.removeItem(SETTINGS_STORAGE_KEY);
 	}
 }
