@@ -15,11 +15,11 @@ const BXP_KEY = "exp_token_a|piloting|cargos";
 
 // GTA V airport coordinates — approximations; refine in-game as needed.
 // SSIA = Sandy Shores International Airport
-// MGA  = Mt. Gordo / "Mt. Godo" area airstrip
+// MGA  = Mt. Gordo area airstrip
 // SCHIA = San Chanski (placeholder — adjust to actual in-game coords)
 const CARGO_ROUTE = [
   { key: "SSIA", label: "SSIA", fullName: "Sandy Shores Intl", x: 1747, y: 3273 },
-  { key: "MGA", label: "Mt. Godo", fullName: "Mt. Godo Airstrip", x: 2120, y: 4790 },
+  { key: "MGA", label: "Mt. Gordo", fullName: "Mt. Gordo Airstrip", x: 2120, y: 4790 },
   { key: "SCHIA", label: "San Chanski", fullName: "San Chanski Intl", x: -1037, y: -2987 }
 ];
 
@@ -34,6 +34,12 @@ const GEAR_TRIGGER = "cp_toggle_gear";
 // for the San Chanski airport key.
 const AIRPORT_ALIASES = {
   SCHIA: ["SCHIA", "SCA"]
+};
+
+const AIRPORT_DESTINATION_HINTS = {
+  SSIA: ["sandy shores", "ssia"],
+  MGA: ["mt gordo", "mount gordo", "mga", "gordo"],
+  SCHIA: ["san chanski", "schia", "sca", "los santos", "chumash"]
 };
 
 const OPACITY_LEVELS = [0.95, 0.75, 0.5, 0.25];
@@ -85,6 +91,8 @@ const state = {
   opacityIdx: 0,
   lastArrivedAt: 0,
   isAutomating: false,
+  menuAutomationStep: 0,
+  lastMenuActionAt: 0,
   menuSessionAutomated: false,
   runwaySeenAirports: new Set(),
   lastTriggerValues: {} // trigger_<name> -> last seen value (for edge detection)
@@ -717,10 +725,31 @@ function choiceText(choice) {
   return "";
 }
 
+function stripHtml(text) {
+  return String(text)
+    .replace(/<[^>]*>/g, " ")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function normalizeText(text) {
+  return stripHtml(text).toLowerCase();
+}
+
+function getChoiceEntries() {
+  return state.menuChoices.map((choice) => {
+    const raw = choiceText(choice);
+    const plain = stripHtml(raw);
+    const lower = plain.toLowerCase();
+    return { raw, plain, lower };
+  });
+}
+
 function findChoiceContaining(tokens) {
   const lowered = tokens.map(t => t.toLowerCase());
   for (const c of state.menuChoices) {
-    const t = choiceText(c).toLowerCase();
+    const t = normalizeText(choiceText(c));
     if (lowered.every(tok => t.includes(tok))) return choiceText(c);
   }
   return null;
@@ -728,6 +757,75 @@ function findChoiceContaining(tokens) {
 
 function forceChoice(label) {
   post({ type: "forceMenuChoice", choice: label, mod: 0 });
+}
+
+function forceChoiceConfirm(label) {
+  post({ type: "forceMenuChoice", choice: label, mod: -1 });
+}
+
+function isQuantityMenu(entries) {
+  return entries.some((e) => /(?:x|×)\s*\d+/i.test(e.plain));
+}
+
+function chooseHighestQuantity(entries) {
+  let best = null;
+  let qty = -1;
+  for (const e of entries) {
+    const m = /(?:x|×)\s*(\d+)/i.exec(e.plain);
+    if (!m) continue;
+    const n = parseInt(m[1], 10);
+    if (!Number.isFinite(n)) continue;
+    if (n > qty) {
+      qty = n;
+      best = e;
+    }
+  }
+  return best;
+}
+
+function destinationTokensForLeg() {
+  const { to } = currentLeg();
+  if (!to) return [];
+  const keyHints = AIRPORT_DESTINATION_HINTS[to.key] || [];
+  const label = normalizeText(to.label).replace(/\./g, "");
+  const full = normalizeText(to.fullName).replace(/\b(international|intl|airstrip|airport)\b/g, "").trim();
+  const split = full.split(" ").filter(Boolean);
+  const tokenSet = new Set([
+    ...keyHints,
+    label,
+    full,
+    split.slice(0, 2).join(" "),
+    split.slice(-2).join(" ")
+  ].map((t) => normalizeText(t).replace(/\./g, "").trim()).filter(Boolean));
+  return [...tokenSet];
+}
+
+function chooseDestination(entries) {
+  const tokens = destinationTokensForLeg();
+  if (tokens.length === 0) return null;
+
+  let best = null;
+  let bestScore = 0;
+  for (const e of entries) {
+    let score = 0;
+    const normalizedChoice = e.lower.replace(/\./g, "");
+    for (const token of tokens) {
+      if (!token) continue;
+      if (normalizedChoice.includes(token.replace(/\./g, ""))) score += token.length;
+    }
+    if (score > bestScore) {
+      best = e;
+      bestScore = score;
+    }
+  }
+  return bestScore > 0 ? best : null;
+}
+
+function canActOnMenuNow() {
+  const now = Date.now();
+  if (now - state.lastMenuActionAt < 280) return false;
+  state.lastMenuActionAt = now;
+  return true;
 }
 
 function tryTransformerAutomation() {
@@ -738,13 +836,13 @@ function tryTransformerAutomation() {
   if (!Array.isArray(state.menuChoices) || state.menuChoices.length === 0) return;
 
   const menuTitle = String(state.cache.menu || "").toLowerCase();
-  const choiceBlob = state.menuChoices.map(choiceText).join(" | ").toLowerCase();
+  const entries = getChoiceEntries();
+  const choiceBlob = entries.map((e) => e.lower).join(" | ");
   const isCargoMenu = menuTitle.includes("cargo") || menuTitle.includes("transformer") ||
     choiceBlob.includes("cargo") || choiceBlob.includes("pickup") || choiceBlob.includes("sell");
   if (!isCargoMenu) return;
 
   state.isAutomating = true;
-  state.menuSessionAutomated = true;
 
   const { airport } = nearestAirport();
   const airportKey = airport ? airport.key : null;
@@ -752,38 +850,58 @@ function tryTransformerAutomation() {
 
   (async () => {
     try {
-      if (!isPickup) {
-        // Try sell first
-        const sellChoice = findChoiceContaining(["sell"]) ||
-          findChoiceContaining(["deliver"]) ||
-          findChoiceContaining(["unload"]);
-        if (sellChoice) {
-          forceChoice(sellChoice);
-          showToast("Auto-sell: " + sellChoice);
-          await sleep(800);
-          // Reopen transformer for pickup
-          post({ type: "forceMenuBack" });
-          await sleep(300);
-          sendCommand("vrp-reopen");
-          await sleep(600);
+      // Step 1: destination/select menu (e.g., Mt. Gordo)
+      if (state.menuAutomationStep === 0) {
+        const destination = chooseDestination(entries);
+        if (destination && canActOnMenuNow()) {
+          forceChoice(destination.raw);
+          state.menuAutomationStep = 1;
+          showToast("Auto-select: " + destination.plain);
+          return;
         }
       }
 
-      // Pickup
-      const pickChoice = findChoiceContaining(["pickup"]) ||
-        findChoiceContaining(["take", "cargo"]) ||
-        findChoiceContaining(["load"]);
-      if (pickChoice) {
-        forceChoice(pickChoice);
-        showToast("Auto-pickup: " + pickChoice);
+      // Step 2: quantity menu (e.g., x4/x2/x1) => take highest.
+      if (state.menuAutomationStep >= 1 && isQuantityMenu(entries)) {
+        const topQty = chooseHighestQuantity(entries);
+        if (topQty && canActOnMenuNow()) {
+          forceChoice(topQty.raw);
+          await sleep(120);
+          forceChoiceConfirm(topQty.raw);
+          state.menuAutomationStep = 2;
+          state.menuSessionAutomated = true;
+          showToast("Auto-quantity: " + topQty.plain);
+          return;
+        }
+      }
+
+      // Fallback pickup behavior for SSIA or generic pickup markers.
+      if (isPickup) {
+        const pickChoice = findChoiceContaining(["pickup"]) ||
+          findChoiceContaining(["take", "cargo"]) ||
+          findChoiceContaining(["load"]);
+        if (pickChoice && canActOnMenuNow()) {
+          forceChoice(pickChoice);
+          state.menuSessionAutomated = true;
+          showToast("Auto-pickup: " + stripHtml(pickChoice));
+          return;
+        }
+      }
+
+      // Generic delivery fallback when destination tokens don't match.
+      if (!isPickup && state.menuAutomationStep === 0) {
+        const sellChoice = findChoiceContaining(["sell"]) ||
+          findChoiceContaining(["deliver"]) ||
+          findChoiceContaining(["unload"]);
+        if (sellChoice && canActOnMenuNow()) {
+          forceChoice(sellChoice);
+          state.menuAutomationStep = 1;
+          showToast("Auto-deliver: " + stripHtml(sellChoice));
+          return;
+        }
       }
     } finally {
       state.isAutomating = false;
-      // Re-assert the session guard. The sell flow itself closes+reopens the
-      // menu via forceMenuBack/vrp-reopen, and each transition flips
-      // menuSessionAutomated back to false in handleIncoming. Without this
-      // re-assert the next poll would run the full sell+pickup sequence again.
-      state.menuSessionAutomated = true;
     }
   })();
 }
@@ -882,9 +1000,11 @@ function handleIncoming(data) {
       state.cache[key] = state.menuOpen;
       if (!wasOpen && state.menuOpen) {
         state.menuSessionAutomated = false;
+        state.menuAutomationStep = 0;
         setTimeout(tryTransformerAutomation, 150);
       } else if (wasOpen && !state.menuOpen) {
         state.menuSessionAutomated = false;
+        state.menuAutomationStep = 0;
       }
     } else if (key.startsWith("runway_")) {
       ingestRunway(key, value);

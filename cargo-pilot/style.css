@@ -59,6 +59,7 @@ html, body {
   position: fixed;
   border: 1px solid var(--cp-line);
   border-radius: 10px;
+  background-color: rgb(var(--cp-bg));
   background: rgba(var(--cp-bg), var(--cp-bg-opacity));
   box-shadow: var(--cp-shadow);
   color: var(--cp-text);
@@ -68,8 +69,21 @@ html, body {
   min-width: 260px;
   min-height: 160px;
   overflow: hidden;
-  backdrop-filter: blur(4px);
-  -webkit-backdrop-filter: blur(4px);
+  isolation: isolate;
+}
+
+.cp-panel::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: rgba(var(--cp-bg), var(--cp-bg-opacity));
+  pointer-events: none;
+  z-index: 0;
+}
+
+.cp-panel > * {
+  position: relative;
+  z-index: 1;
 }
 
 .cp-main {
