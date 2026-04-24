@@ -21,10 +21,12 @@ const INTEGRATION_USER_INACTIVE_POLL_INTERVAL_MS = 12000;
 const NUI_IDLE_POLL_INTERVAL_MS = 6000;
 const NUI_HIDDEN_POLL_INTERVAL_MS = 10000;
 const USER_ACTIVITY_TIMEOUT_MS = 120000;
-const LEADERBOARD_REQUEST_TIMEOUT_MS = 5000;
+const LEADERBOARD_REQUEST_TIMEOUT_MS = 3000;
+const LEADERBOARD_TOTAL_TIMEOUT_MS = 20000;
 const LEADERBOARD_REFRESH_MIN_MS = 60000;
 const LEADERBOARD_MANUAL_REFRESH_COOLDOWN_MS = 30000;
 const VEHICLE_TRUNK_REFRESH_COOLDOWN_MS = 800;
+const AUTO_TAKE_SUCCESS_TOAST_WINDOW_MS = 1600;
 const TYCOON_OPEN_TRUNK_COMMANDS = ["rm_trunk", "rm_cabtrunk"];
 const DEBUG_PIN_XOR_KEY = 0x53;
 const DEBUG_PIN_OBFUSCATED = [106, 97, 101, 98, 106];
@@ -547,14 +549,21 @@ function setLeaderboardRefreshNowButtonCooldown(cooldownMs = LEADERBOARD_MANUAL_
 	
 	// Schedule button re-enable after cooldown expires
 	leaderboardManualRefreshCooldownTimer = window.setTimeout(() => {
-		leaderboardManualRefreshCooldownUntil = 0;
-		if (!refs.leaderboardRefreshNowBtn) {
-			return;
-		}
-
-		refs.leaderboardRefreshNowBtn.disabled = false;
-		refs.leaderboardRefreshNowBtn.textContent = "Refresh Leaderboard Now";
+		resetLeaderboardManualRefreshCooldown();
 	}, cooldownMs);
+}
+
+function resetLeaderboardManualRefreshCooldown() {
+	leaderboardManualRefreshCooldownUntil = 0;
+	window.clearTimeout(leaderboardManualRefreshCooldownTimer);
+	leaderboardManualRefreshCooldownTimer = 0;
+
+	if (!refs.leaderboardRefreshNowBtn) {
+		return;
+	}
+
+	refs.leaderboardRefreshNowBtn.disabled = false;
+	refs.leaderboardRefreshNowBtn.textContent = "Refresh Leaderboard Now";
 }
 
 /**
@@ -606,20 +615,85 @@ function formatLeaderboardNumber(value) {
  * @returns {Array} Array of normalized leaderboard entry objects with validated fields
  */
 function normalizeLeaderboardEntries(rawTop) {
-	if (!Array.isArray(rawTop)) {
+	const normalizedArray = Array.isArray(rawTop)
+		? rawTop
+		: rawTop && typeof rawTop === "object" && Object.keys(rawTop).every(k => Number.isFinite(Number(k)))
+			? Object.entries(rawTop).map(([key, value]) => {
+				if (value && typeof value === "object") {
+					return {
+						...value,
+						user_id:
+							value.user_id !== undefined
+								? value.user_id
+								: value.userId !== undefined
+									? value.userId
+									: Number(key)
+					};
+				}
+
+				const numericValue = Number(value);
+				if (Number.isFinite(numericValue)) {
+					return {
+						username: `User ${key}`,
+						user_id: Number(key),
+						amount: numericValue
+					};
+				}
+
+				return null;
+			})
+			: [];
+
+	if (!Array.isArray(normalizedArray) || normalizedArray.length === 0) {
 		return [];
 	}
 
 	// Transform and validate each entry
-	return rawTop
+	return normalizedArray
 		.map((entry) => {
 			if (!entry || typeof entry !== "object") {
 				return null;
 			}
 
-			const username = typeof entry.username === "string" ? entry.username : "Unknown";
-			const userId = Number(entry.user_id);
-			const amount = Number(entry.amount);
+			const usernameCandidate =
+				typeof entry.username === "string"
+					? entry.username
+					: typeof entry.name === "string"
+						? entry.name
+						: typeof entry.player_name === "string"
+							? entry.player_name
+							: typeof entry.player === "string"
+								? entry.player
+								: typeof entry.display_name === "string"
+									? entry.display_name
+									: "Unknown";
+
+			const username = usernameCandidate.trim() || "Unknown";
+			const userId = Number(
+				entry.user_id !== undefined
+					? entry.user_id
+					: entry.userId !== undefined
+						? entry.userId
+						: entry.id !== undefined
+							? entry.id
+							: entry.player_id !== undefined
+								? entry.player_id
+								: entry.vrpid
+			);
+
+			const amount = Number(
+				entry.amount !== undefined
+					? entry.amount
+					: entry.score !== undefined
+						? entry.score
+						: entry.value !== undefined
+							? entry.value
+							: entry.points !== undefined
+								? entry.points
+								: entry.total !== undefined
+									? entry.total
+									: entry.stat
+			);
 
 			return {
 				username,
@@ -629,6 +703,164 @@ function normalizeLeaderboardEntries(rawTop) {
 		})
 		// Remove null entries that failed validation
 		.filter(Boolean);
+}
+
+function extractLeaderboardEntriesPayload(payload, statName = "") {
+	if (typeof payload === "string") {
+		const parsed = tryParseJsonObject(payload);
+		if (parsed) {
+			return extractLeaderboardEntriesPayload(parsed, statName);
+		}
+		return [];
+	}
+
+	if (Array.isArray(payload)) {
+		return payload;
+	}
+
+	if (!payload || typeof payload !== "object") {
+		return [];
+	}
+
+	const normalizedStatName = typeof statName === "string" ? statName.trim().toLowerCase() : "";
+	if (normalizedStatName) {
+		for (const key of Object.keys(payload)) {
+			if (String(key).trim().toLowerCase() === normalizedStatName) {
+				const statValue = payload[key];
+				if (Array.isArray(statValue) || (statValue && typeof statValue === "object")) {
+					return statValue;
+				}
+				if (typeof statValue === "string") {
+					const parsed = tryParseJsonObject(statValue);
+					if (parsed) {
+						return extractLeaderboardEntriesPayload(parsed, statName);
+					}
+				}
+			}
+		}
+	}
+
+	for (const key of ["top", "top10", "entries", "results", "leaderboard"]) {
+		if (key in payload) {
+			const value = payload[key];
+			if (Array.isArray(value) || (value && typeof value === "object")) {
+				return value;
+			}
+			if (typeof value === "string") {
+				const parsed = tryParseJsonObject(value);
+				if (parsed) {
+					return extractLeaderboardEntriesPayload(parsed, statName);
+				}
+			}
+		}
+	}
+
+	if (payload.data && typeof payload.data === "object") {
+		const nested = extractLeaderboardEntriesPayload(payload.data, statName);
+		if ((Array.isArray(nested) && nested.length > 0) || (nested && typeof nested === "object")) {
+			return nested;
+		}
+	}
+
+	if (payload.result && typeof payload.result === "object") {
+		const nested = extractLeaderboardEntriesPayload(payload.result, statName);
+		if ((Array.isArray(nested) && nested.length > 0) || (nested && typeof nested === "object")) {
+			return nested;
+		}
+	}
+
+	return payload;
+}
+
+function getLeaderboardApiErrorMessage(payload) {
+	if (!payload || typeof payload !== "object") {
+		return "";
+	}
+
+	const candidates = [
+		payload.error,
+		payload.message,
+		payload.detail,
+		payload.reason,
+		payload.status,
+		payload.data && payload.data.error,
+		payload.data && payload.data.message,
+		payload.data && payload.data.detail,
+		payload.result && payload.result.error,
+		payload.result && payload.result.message
+	];
+
+	for (const candidate of candidates) {
+		if (typeof candidate !== "string") {
+			continue;
+		}
+
+		const text = candidate.trim();
+		if (!text) {
+			continue;
+		}
+
+		if (/^(ok|success|true)$/i.test(text)) {
+			continue;
+		}
+
+		return text;
+	}
+
+	return "";
+}
+
+function getLeaderboardCandidateUrls(apiBaseUrl, statName) {
+	const baseUrl = String(apiBaseUrl || "").replace(/\/$/, "");
+	const encodedStat = encodeURIComponent(String(statName || ""));
+	const candidates = [
+		`${baseUrl}/top10/${encodedStat}`,
+		`${baseUrl}/top10?stat=${encodedStat}`,
+		`${baseUrl}/top10?name=${encodedStat}`
+	];
+
+	const baseWithoutStatus = baseUrl.replace(/\/status$/i, "");
+	if (baseWithoutStatus !== baseUrl) {
+		candidates.push(`${baseWithoutStatus}/status/top10/${encodedStat}`);
+		candidates.push(`${baseWithoutStatus}/status/top10?stat=${encodedStat}`);
+	}
+
+	return Array.from(new Set(candidates));
+}
+
+function getLeaderboardStatCandidates(statName) {
+	const normalizedPrimary = typeof statName === "string" ? statName.trim() : "";
+	const candidates = [
+		normalizedPrimary,
+		"pizza_delivery",
+		"pizza",
+		"pizza delivery",
+		"pizza-delivery"
+	].filter(Boolean);
+
+	return Array.from(new Set(candidates));
+}
+
+function parseLeaderboardResponsePayload(rawText) {
+	if (typeof rawText !== "string") {
+		return null;
+	}
+
+	const trimmed = rawText.trim();
+	if (!trimmed) {
+		return null;
+	}
+
+	const parsedObject = tryParseJsonObject(trimmed);
+	if (parsedObject) {
+		return parsedObject;
+	}
+
+	try {
+		return JSON.parse(trimmed);
+	} catch (error) {
+		return null;
+	}
 }
 
 /**
@@ -770,37 +1002,84 @@ async function fetchPizzaLeaderboard(force = false, isManual = false) {
 	state.leaderboard.status = "Refreshing leaderboard...";
 	render();
 
-	// Construct API endpoint URL with encoded stat name
-	const baseUrl = String(config.apiBaseUrl).replace(/\/$/, "");
-	const statName = encodeURIComponent(String(config.statName));
-	const url = `${baseUrl}/top10/${statName}`;
-	
 	// Build request headers, including API key if configured
 	const headers = {};
 	if (typeof config.apiKey === "string" && config.apiKey.trim()) {
 		headers["X-Tycoon-Key"] = config.apiKey.trim();
 	}
 
-	// Set up request timeout to prevent hanging requests
-	const controller = new AbortController();
-	const timeoutHandle = window.setTimeout(() => {
-		controller.abort();
-	}, LEADERBOARD_REQUEST_TIMEOUT_MS);
-
 	try {
-		const response = await fetch(url, {
-			method: "GET",
-			headers,
-			signal: controller.signal
-		});
+		const statCandidates = getLeaderboardStatCandidates(config.statName);
+		const candidateUrls = statCandidates.flatMap((candidateStat) =>
+			getLeaderboardCandidateUrls(config.apiBaseUrl, candidateStat).map((url) => ({
+				url,
+				stat: candidateStat
+			}))
+		);
+		let selectedEntries = [];
+		let selectedPayload = null;
+		let selectedUrl = candidateUrls[0] ? candidateUrls[0].url : "";
+		let selectedStat = config.statName;
+		let lastHttpError = "";
+		const fetchStartTime = Date.now();
 
-		if (!response.ok) {
-			throw new Error(`HTTP ${response.status}`);
+		for (const candidate of candidateUrls) {
+			if (Date.now() - fetchStartTime >= LEADERBOARD_TOTAL_TIMEOUT_MS) {
+				break;
+			}
+
+			const controller = new AbortController();
+			const timeoutHandle = window.setTimeout(() => controller.abort(), LEADERBOARD_REQUEST_TIMEOUT_MS);
+			let response;
+			try {
+				response = await fetch(candidate.url, {
+					method: "GET",
+					headers,
+					signal: controller.signal
+				});
+			} catch (_fetchError) {
+				// Request timed out or was aborted — skip this candidate
+				continue;
+			} finally {
+				window.clearTimeout(timeoutHandle);
+			}
+
+			if (!response.ok) {
+				lastHttpError = `HTTP ${response.status}`;
+				continue;
+			}
+
+			const rawBody = await response.text();
+			const payload = parseLeaderboardResponsePayload(rawBody);
+			if (payload === null) {
+				continue;
+			}
+
+			const rawEntries = extractLeaderboardEntriesPayload(payload, candidate.stat);
+			const entries = normalizeLeaderboardEntries(rawEntries);
+
+			if (entries.length > 0) {
+				selectedEntries = entries;
+				selectedPayload = payload;
+				selectedUrl = candidate.url;
+				selectedStat = candidate.stat;
+				break;
+			}
+
+			if (!selectedPayload) {
+				selectedPayload = payload;
+				selectedUrl = candidate.url;
+				selectedStat = candidate.stat;
+			}
 		}
 
-		const payload = await response.json();
-		const allEntries = normalizeLeaderboardEntries(payload.top);
+		if (!selectedPayload && lastHttpError) {
+			throw new Error(lastHttpError);
+		}
+
+		const allEntries = selectedEntries;
 		const yourPosition = resolveYourLeaderboardPosition(allEntries);
+		const apiErrorMessage = getLeaderboardApiErrorMessage(selectedPayload);
 
 		// Store top 3 entries for display, resolve player's rank
 		state.leaderboard.top = allEntries.slice(0, 3);
@@ -809,8 +1088,12 @@ async function fetchPizzaLeaderboard(force = false, isManual = false) {
 		state.leaderboard.lastUpdatedAt = Date.now();
 		state.leaderboard.status =
 			allEntries.length > 0
-				? `Top ${Math.min(3, allEntries.length)} loaded (${new Date(state.leaderboard.lastUpdatedAt).toLocaleTimeString()}).`
-				: "Leaderboard returned no entries.";
+				? `Last refreshed: ${new Date(state.leaderboard.lastUpdatedAt).toLocaleTimeString()}.`
+				: apiErrorMessage
+					? `Leaderboard API: ${apiErrorMessage}`
+					: headers["X-Tycoon-Key"]
+						? "Leaderboard returned no entries. This can happen if the leaderboard is currently empty. Complete one pizza delivery, then refresh again."
+						: "Leaderboard returned no entries. Add Private API Key in Settings.";
 	} catch (error) {
 		// Clear leaderboard on error and show status message
 		state.leaderboard.top = [];
@@ -818,8 +1101,7 @@ async function fetchPizzaLeaderboard(force = false, isManual = false) {
 		state.leaderboard.yourAmount = null;
 		state.leaderboard.status = `Leaderboard unavailable (${error && error.message ? error.message : "request failed"}).`;
 	} finally {
-		// Clean up: clear timeout and restore loading state
-		window.clearTimeout(timeoutHandle);
+		// Restore loading state
 		state.leaderboard.isLoading = false;
 		render();
 	}
@@ -932,6 +1214,10 @@ function isPizzaDeliveryJobName(jobName) {
 		return false;
 	}
 
+	if (normalized === "pizza") {
+		return true;
+	}
+
 	// Exact match
 	if (normalized === PIZZA_DELIVERY_JOB_NAME) {
 		return true;
@@ -951,6 +1237,7 @@ function setPizzaJobAppVisible(isVisible) {
 	
 	// Clean up related UI when hiding main app
 	if (!isVisible) {
+		resetLeaderboardManualRefreshCooldown();
 		if (refs.settingsPanel) {
 			refs.settingsPanel.classList.add("hidden");
 		}
@@ -1047,14 +1334,28 @@ function updatePlayerJobStateFromPayload(payload) {
 		return;
 	}
 
-	// Search for job name in multiple common property names
-	const nextJobName =
+	// Prefer the first candidate that resolves to pizza delivery.
+	const candidates = [payload.job_name, payload.job_title, payload.job];
+	for (const candidate of candidates) {
+		const normalizedCandidate = normalizeJobName(candidate);
+		if (!normalizedCandidate) {
+			continue;
+		}
+
+		if (isPizzaDeliveryJobName(normalizedCandidate)) {
+			setPlayerJobState(normalizedCandidate);
+			return;
+		}
+	}
+
+	// Fallback: keep existing behavior when no pizza alias is found.
+	const fallbackJobName =
 		normalizeJobName(payload.job_name) ||
 		normalizeJobName(payload.job_title) ||
 		normalizeJobName(payload.job);
-	
-	if (nextJobName) {
-		setPlayerJobState(nextJobName);
+
+	if (fallbackJobName) {
+		setPlayerJobState(fallbackJobName);
 	}
 }
 
@@ -1065,6 +1366,8 @@ function updatePlayerJobStateFromPayload(payload) {
  * Called when pizza delivery job ends or is reset.
  */
 function resetPizzaJobRuntimeState() {
+	resetLeaderboardManualRefreshCooldown();
+
 	// Reset order and inventory state
 	state.orderId = generateRandomOrderId();
 	state.order = createEmptyTrackedItemTable();
@@ -1427,7 +1730,7 @@ function normalizeButtonTooltipAttributes() {
 }
 
 const DEBUG_MAX_ENTRIES = 1000;
-const DEBUG_FILTER_MODES = ["trunk", "focused", "server", "all"];
+const DEBUG_FILTER_MODES = ["actions", "trunk", "focused", "server", "all"];
 const DEFAULT_DEBUG_FILTER_MODE = "trunk";
 
 /**
@@ -1764,14 +2067,178 @@ function getTrunkSignalPayloadSignature(data) {
 	}
 }
 
+function isImportantActionDebugStage(stageValue) {
+	if (typeof stageValue !== "string") {
+		return true;
+	}
+
+	const normalizedStage = stageValue.trim().toLowerCase();
+	if (!normalizedStage) {
+		return true;
+	}
+
+	const noisyStages = new Set([
+		"marker-probe",
+		"chest-selected",
+		"marker-waypoint-feed-only",
+		"mission-marker-detected",
+		"mission-marker-apply-gps",
+		"menu-state-request",
+		"menu-state-stale-nudge"
+	]);
+	if (noisyStages.has(normalizedStage)) {
+		return false;
+	}
+
+	return /(take|trunk-open|trunk-close|blocked|failed|success|error|fallback|guard|force)/.test(normalizedStage);
+}
+
+function isImportantActionServerPayload(data) {
+	if (!data || typeof data !== "object" || Array.isArray(data)) {
+		return false;
+	}
+
+	if ("trigger_circle" in data) {
+		return true;
+	}
+
+	if (typeof data.notification === "string") {
+		const normalizedNotification = data.notification.trim().toLowerCase();
+		if (normalizedNotification.includes("received") || normalizedNotification.includes("trunk")) {
+			return true;
+		}
+	}
+
+	if (typeof data.menu_choice === "string") {
+		const normalizedChoice = cleanMenuChoiceLabel(data.menu_choice).toLowerCase();
+		if (normalizedChoice.includes("take") || normalizedChoice.includes("put")) {
+			return true;
+		}
+	}
+
+	return false;
+}
+
+function isNoisyTycoonStateSnapshot(data) {
+	if (!data || typeof data !== "object" || Array.isArray(data)) {
+		return false;
+	}
+
+	const keys = Object.keys(data);
+	if (keys.length < 40) {
+		return false;
+	}
+
+	const hasPositionOrCameraSignals =
+		hasOwn(data, "cam_x") ||
+		hasOwn(data, "cam_y") ||
+		hasOwn(data, "cam_z") ||
+		hasOwn(data, "pos_x") ||
+		hasOwn(data, "pos_y") ||
+		hasOwn(data, "pos_z");
+
+	const hasIdentityOrRosterBlob =
+		hasOwn(data, "players") ||
+		hasOwn(data, "steam") ||
+		hasOwn(data, "discord") ||
+		hasOwn(data, "license") ||
+		hasOwn(data, "endpoint") ||
+		hasOwn(data, "pkey") ||
+		hasOwn(data, "fivem");
+
+	const hasLargeStorageBlob = keys.some((key) => key.startsWith("chest_self_storage:")) || hasOwn(data, "inventory");
+
+	return hasPositionOrCameraSignals && hasIdentityOrRosterBlob && hasLargeStorageBlob;
+}
+
+function isNoisyAutomationDebugStage(stageValue) {
+	if (typeof stageValue !== "string") {
+		return false;
+	}
+
+	const normalizedStage = stageValue.trim().toLowerCase();
+	if (!normalizedStage) {
+		return false;
+	}
+
+	const noisyStages = new Set([
+		"force-send-command",
+		"force-menu-choice",
+		"force-menu-key",
+		"fallback-force-literal",
+		"trunk-open-start",
+		"trunk-close-start",
+		"put-all-guard-recover-start",
+		"menu-state-request",
+		"menu-state-stale-nudge",
+		"layout-key-nav-start"
+	]);
+
+	return noisyStages.has(normalizedStage);
+}
+
+function isSignalOnlyTycoonDataPayload(data) {
+	if (!data || typeof data !== "object" || Array.isArray(data)) {
+		return false;
+	}
+
+	const keys = Object.keys(data);
+	if (keys.length !== 1) {
+		return false;
+	}
+
+	const singleKey = keys[0];
+	if (singleKey === "trigger_circle") {
+		return true;
+	}
+
+	if (singleKey === "menu_choice") {
+		const normalizedChoice = cleanMenuChoiceLabel(data.menu_choice).toLowerCase();
+		return normalizedChoice === "take order" || normalizedChoice === "put" || normalizedChoice === "take";
+	}
+
+	return false;
+}
+
 function shouldSkipDebugPayload(raw) {
 	if (!raw || typeof raw !== "object") {
 		return false;
 	}
 
+	const isVerbose = isVerboseRawDebugEnabled();
+
+	if (
+		raw.type === "data" &&
+		raw.fromTycoonScript === true &&
+		!isVerbose &&
+		isNoisyTycoonStateSnapshot(raw.data)
+	) {
+		return true;
+	}
+
+	if (!isVerbose && raw.type === "pizza-job-debug" && isNoisyAutomationDebugStage(raw.stage)) {
+		return true;
+	}
+
+	if (!isVerbose && raw.type === "data" && raw.fromTycoonScript === true && isSignalOnlyTycoonDataPayload(raw.data)) {
+		return true;
+	}
+
 	const filterMode = getDebugFilterMode();
 	if (filterMode === "all") {
 		return false;
+	}
+
+	if (filterMode === "actions") {
+		if (raw.type === "pizza-job-debug") {
+			return !isImportantActionDebugStage(raw.stage);
+		}
+
+		if (raw.type === "data" && raw.fromTycoonScript === true) {
+			return !isImportantActionServerPayload(raw.data);
+		}
+
+		return true;
 	}
 
 	if (raw.type === "pizza-job-debug") {
@@ -1802,7 +2269,7 @@ function shouldSkipDebugPayload(raw) {
 		return true;
 	}
 
-	if (isVerboseRawDebugEnabled()) {
+	if (isVerbose) {
 		return false;
 	}
 
@@ -3006,6 +3473,14 @@ function markTycoonTakeSuccess(trackedItem) {
 	state.tycoonTrunk.lastTakeAt = Date.now();
 }
 
+function getRecentAutoTakeSuccessMessage(windowMs = AUTO_TAKE_SUCCESS_TOAST_WINDOW_MS) {
+	if (Date.now() - state.tycoonTrunk.lastTakeAt > windowMs) {
+		return "";
+	}
+
+	return "Order successfully taken from trunk.";
+}
+
 function wasRecentTycoonTakeSuccess(trackedItem, windowMs = 1300) {
 	if (state.tycoonTrunk.lastTakeItem !== trackedItem) {
 		return false;
@@ -4153,6 +4628,20 @@ async function recoverFromUnsafePutAllSelection(reason = "") {
 		return false;
 	}
 
+	const recentSelectionAgeMs = Date.now() - Number(state.tycoonTrunk.lastMenuChoiceAt || 0);
+	if (recentSelectionAgeMs > 900) {
+		debugLogMessage({
+			type: "pizza-job-debug",
+			stage: "put-all-guard-recover-skipped-stale",
+			reason,
+			menuOpen: state.tycoonTrunk.menuOpen,
+			menuName: state.tycoonTrunk.menuName,
+			lastMenuChoice: state.tycoonTrunk.lastMenuChoice,
+			selectionAgeMs: recentSelectionAgeMs
+		});
+		return false;
+	}
+
 	if (!hasTycoonTrunkContext()) {
 		debugLogMessage({
 			type: "pizza-job-debug",
@@ -4195,7 +4684,8 @@ async function recoverFromUnsafePutAllSelection(reason = "") {
 	return recovered;
 }
 
-async function closeTycoonTrunkMenu(reason = "") {
+async function closeTycoonTrunkMenu(reason = "", options = {}) {
+	const fastMode = options.fastMode === true;
 	const menuName = typeof state.tycoonTrunk.menuName === "string" ? state.tycoonTrunk.menuName.toLowerCase() : "";
 	if (!state.tycoonTrunk.menuOpen && !menuName.includes("trunk")) {
 		return true;
@@ -4209,13 +4699,13 @@ async function closeTycoonTrunkMenu(reason = "") {
 		menuName: state.tycoonTrunk.menuName
 	});
 
-	for (let attempt = 0; attempt < 3; attempt += 1) {
+	for (let attempt = 0; attempt < (fastMode ? 4 : 3); attempt += 1) {
 		window.parent.postMessage({ type: "forceMenuBack" }, "*");
-		await pressTycoonMenuKey("back", 1, 70);
-		await new Promise((resolve) => window.setTimeout(resolve, 70));
+		await pressTycoonMenuKey("back", fastMode ? 2 : 1, fastMode ? 45 : 70);
+		await new Promise((resolve) => window.setTimeout(resolve, fastMode ? 45 : 70));
 		requestTycoonMenuState(`close-trunk-${reason || "action"}-${attempt + 1}`);
 
-		const closed = await waitForCondition(() => !state.tycoonTrunk.menuOpen, 260, 35);
+		const closed = await waitForCondition(() => !state.tycoonTrunk.menuOpen, fastMode ? 220 : 260, 35);
 		if (closed) {
 			debugLogMessage({
 				type: "pizza-job-debug",
@@ -4238,26 +4728,109 @@ async function closeTycoonTrunkMenu(reason = "") {
 	return false;
 }
 
-async function takeOrder() {
+function findTakeOrderMenuOption() {
+	return (
+		findTycoonMenuChoice("Take Order", "Take order", "Take Order (O)", "Take order (o)") ||
+		findTycoonMenuChoice("<span sort='A'></span>Take Order")
+	);
+}
+
+async function tryFastVehicleExitTakeOrder() {
+	// Wait until the game has actually populated the trunk menu with Take Order —
+	// this is more reliable than fixed timers because the game tells us when it's ready.
+	const menuReady = await waitForCondition(
+		() => hasTycoonTrunkContext() && Boolean(findTakeOrderMenuOption()),
+		600,
+		10
+	);
+
+	if (!menuReady) {
+		// Trunk menu did not become ready; try sending an open command once as fallback
+		for (const command of TYCOON_OPEN_TRUNK_COMMANDS) {
+			sendTycoonCommand(command);
+			const opened = await waitForCondition(
+				() => hasTycoonTrunkContext() && Boolean(findTakeOrderMenuOption()),
+				command === "rm_trunk" ? 400 : 500,
+				10
+			);
+			if (opened) {
+				break;
+			}
+		}
+
+		if (!hasTycoonTrunkContext() || !findTakeOrderMenuOption()) {
+			return { ok: false, message: "" };
+		}
+	}
+
+	// Trunk menu is confirmed ready; now interact
+	const takeOrderOption = findTakeOrderMenuOption();
+	forceTycoonMenuChoice(takeOrderOption, 0);
+	await pressTycoonMenuKey("enter", 1, 16);
+
+	const takeSucceeded = await waitForCondition(() => wasRecentAnyTycoonTakeSuccess(1500), 900, 16);
+	if (!takeSucceeded) {
+		return { ok: false, message: "" };
+	}
+
+	const successMessage = getRecentAutoTakeSuccessMessage();
+	await new Promise((resolve) => window.setTimeout(resolve, 40));
+	await closeTycoonTrunkMenu("vehicle-exit-fast-success", { fastMode: true });
+	return { ok: true, message: successMessage };
+}
+
+async function takeOrder(options = {}) {
+	const shouldTriggerCircle = options.triggerCircle !== false;
+	const requestSource = typeof options.source === "string" && options.source.trim() ? options.source.trim() : "manual";
+	const silentIfBusy = options.silentIfBusy === true;
+	const showRetryToast = requestSource === "manual" || requestSource === "button";
+	const isAutoRequest = !showRetryToast;
+	const showSuccessToast = !isAutoRequest;
+
 	if (!canRunTakeOrder()) {
 		debugLogMessage({
 			type: "pizza-job-debug",
 			stage: "take-order-skipped",
-			reason: "job-inactive-and-ui-hidden"
+			reason: "job-inactive-and-ui-hidden",
+			source: requestSource
 		});
 		return;
 	}
 
 	if (state.tycoonTrunk.busy) {
-		showToast("Please wait, previous trunk action is still processing.");
+		if (!silentIfBusy) {
+			showToast("Please wait, previous trunk action is still processing.");
+		}
 		return;
 	}
 
 	state.tycoonTrunk.busy = true;
 	try {
-		// Trigger the Circle bindable key path used by user apps.
-		sendTycoonCommand("userapp_trigger circle");
-		await new Promise((resolve) => window.setTimeout(resolve, 90));
+		debugLogMessage({
+			type: "pizza-job-debug",
+			stage: "take-order-start",
+			source: requestSource,
+			triggerCircle: shouldTriggerCircle
+		});
+
+		if (requestSource === "vehicle-exit") {
+			const fastAutoResult = await tryFastVehicleExitTakeOrder();
+			if (fastAutoResult.ok) {
+				if (fastAutoResult.message) {
+					showToast(fastAutoResult.message, 1400);
+				}
+				return;
+			}
+			// Vehicle-exit already tried to open trunk; don't attempt fallback path
+			// to avoid triggering the game's trunk throttle.
+			return;
+		}
+
+		if (shouldTriggerCircle) {
+			// Trigger the Circle bindable key path used by user apps.
+			sendTycoonCommand("userapp_trigger circle");
+			await new Promise((resolve) => window.setTimeout(resolve, isAutoRequest ? 45 : 90));
+		}
 
 		let menuTriggered = false;
 		const trunkReady = await ensureTycoonTrunkContext("take-order-button");
@@ -4270,7 +4843,7 @@ async function takeOrder() {
 				findTycoonMenuChoice("<span sort='A'></span>Take Order");
 
 			if (takeOrderOption) {
-				menuTriggered = await forceTycoonMenuChoiceWithWait(takeOrderOption, 0, 360);
+				menuTriggered = await forceTycoonMenuChoiceWithWait(takeOrderOption, 0, isAutoRequest ? 180 : 360);
 			}
 
 			if (!menuTriggered) {
@@ -4282,10 +4855,12 @@ async function takeOrder() {
 
 			if (menuTriggered) {
 				requestTycoonMenuState("take-order-pre-enter");
-				const contextReadyBeforeEnter = await waitForCondition(hasTycoonTrunkContext, 240, 35);
+				const contextReadyBeforeEnter = await waitForCondition(hasTycoonTrunkContext, isAutoRequest ? 180 : 240, 30);
 				const takeOrderSelected =
 					isTakeOrderMenuChoice(state.tycoonTrunk.lastMenuChoice) ||
-					(await waitForCondition(() => isTakeOrderMenuChoice(state.tycoonTrunk.lastMenuChoice), 220, 35));
+					(isAutoRequest
+						? await waitForCondition(() => isTakeOrderMenuChoice(state.tycoonTrunk.lastMenuChoice), 120, 25)
+						: await waitForCondition(() => isTakeOrderMenuChoice(state.tycoonTrunk.lastMenuChoice), 220, 35));
 
 				if (!contextReadyBeforeEnter || !takeOrderSelected) {
 					debugLogMessage({
@@ -4297,18 +4872,30 @@ async function takeOrder() {
 						lastMenuChoice: state.tycoonTrunk.lastMenuChoice,
 						activeChestId: state.tycoonTrunk.activeChestId
 					});
-					showToast("Trunk menu was not ready for Take Order yet. Press again.");
+					if (showRetryToast && !wasRecentAnyTycoonTakeSuccess(1200)) {
+						showToast("Trunk menu was not ready for Take Order yet. Press again.");
+					}
 					return;
 				}
 
 				await pressTycoonMenuKey("enter", 1, 80);
-				await waitForCondition(
+				const takeSucceeded = await waitForCondition(
 					() => wasRecentAnyTycoonTakeSuccess(1800) || isPutAllMenuChoice(state.tycoonTrunk.lastMenuChoice),
-					900,
+					isAutoRequest ? 1200 : 900,
 					45
 				);
-				await closeTycoonTrunkMenu("take-order-menu-success");
-				showToast("Take Order requested from trunk menu.");
+				if (takeSucceeded || wasRecentAnyTycoonTakeSuccess(2200)) {
+					await new Promise((resolve) => window.setTimeout(resolve, isAutoRequest ? 220 : 110));
+				}
+				await closeTycoonTrunkMenu("take-order-menu-success", { fastMode: isAutoRequest });
+				if (showSuccessToast) {
+					showToast("Take Order requested from trunk menu.");
+				} else if (takeSucceeded || wasRecentAnyTycoonTakeSuccess(2200)) {
+					const successMessage = getRecentAutoTakeSuccessMessage();
+					if (successMessage) {
+						showToast(successMessage, 1400);
+					}
+				}
 				return;
 			}
 		}
@@ -4320,7 +4907,9 @@ async function takeOrder() {
 		}).filter((entry) => entry.transferable > 0);
 
 		if (neededItems.length === 0) {
-			showToast("Take Order trigger sent (Circle keybind path). Waiting for trunk menu data.");
+			if (showSuccessToast) {
+				showToast("Take Order trigger sent (Circle keybind path). Waiting for trunk menu data.");
+			}
 			return;
 		}
 
@@ -4334,8 +4923,15 @@ async function takeOrder() {
 		}
 
 		if (requestedAny) {
-			await closeTycoonTrunkMenu("take-order-item-fallback-success");
-			showToast("Take Order requested from trunk.");
+			await closeTycoonTrunkMenu("take-order-item-fallback-success", { fastMode: isAutoRequest });
+			if (showSuccessToast) {
+				showToast("Take Order requested from trunk.");
+			} else {
+				const successMessage = getRecentAutoTakeSuccessMessage(2200);
+				if (successMessage) {
+					showToast(successMessage, 1400);
+				}
+			}
 		} else {
 			showToast("Unable to request Take Order from trunk.");
 		}
@@ -4817,7 +5413,9 @@ function setupEventHandlers() {
 	refs.bgOpacityInput.addEventListener("change", updateBgOpacityFromInput);
 
 	if (refs.takeOrderBtn) {
-		refs.takeOrderBtn.addEventListener("click", takeOrder);
+		refs.takeOrderBtn.addEventListener("click", () => {
+			takeOrder({ source: "button" });
+		});
 	}
 
 	if (refs.orderList) {
@@ -4943,7 +5541,7 @@ function setupEventHandlers() {
 
 			if (!circleHandledForEvent && hasCircleTrigger(parsedData) && canRunTakeOrder()) {
 				circleHandledForEvent = true;
-				takeOrder();
+				takeOrder({ triggerCircle: false, source: "circle-trigger", silentIfBusy: true });
 			}
 
 			if (typeof parsedData.chest === "string") {
@@ -5077,7 +5675,7 @@ function setupEventHandlers() {
 					state.lastVehicle !== "onFoot" &&
 					parsedData.vehicle === "onFoot"
 				) {
-					takeOrder();
+					takeOrder({ source: "vehicle-exit", silentIfBusy: true });
 				}
 
 				state.lastVehicle = parsedData.vehicle;
