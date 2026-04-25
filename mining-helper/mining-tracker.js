@@ -1090,6 +1090,7 @@ function initializeSettingsMenu() {
   };
 
   const openSettingsMenu = () => {
+    if (isMinimized) return;
     const savedPosition = getSavedSettingsPosition();
     if (savedPosition && positionIsVisible(savedPosition.x, savedPosition.y)) {
       settingsMenu.style.left = savedPosition.x + "px";

@@ -587,8 +587,8 @@ body {
 @keyframes oreIdleFlash {
   0%,
   100% {
-    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.4);
-    border-color: rgba(255, 255, 255, 0.1);
+    box-shadow: var(--ui-panel-shadow);
+    border-color: var(--ui-panel-border);
   }
   50% {
     box-shadow: 0 0 0 2px rgba(251, 113, 133, 0.45), 0 0 22px rgba(251, 113, 133, 0.45);
@@ -1029,17 +1029,6 @@ body {
 }
 
 .dashboard-container.minimized .data-status {
-  display: none;
-}
-
-.dashboard-container.minimized #opacityBtn,
-.dashboard-container.minimized #layoutBtn,
-.dashboard-container.minimized #resetSessionBtn,
-.dashboard-container.minimized #copySummaryBtn {
-  display: none;
-}
-
-.dashboard-container.minimized #settingsMenu {
   display: none;
 }
 
