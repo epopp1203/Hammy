@@ -1267,6 +1267,13 @@ function updateOreInactivityAlert() {
     return;
   }
 
+  // Suppress flashing when data itself is stale — tracker may not be receiving updates.
+  const dataAgeMs = lastDataUpdateAt ? (Date.now() - lastDataUpdateAt) : Number.POSITIVE_INFINITY;
+  if (dataAgeMs >= DATA_STALE_MS) {
+    container.classList.remove("ore-idle-alert");
+    return;
+  }
+
   if (isVoucherConversionActive()) {
     container.classList.remove("ore-idle-alert");
     return;
