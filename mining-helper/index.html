@@ -21,23 +21,12 @@
         <div class="header-bottom">
           <div id="data-status" class="data-status stale" title="Data Health: Waiting for updates">Waiting</div>
           <div class="header-actions">
-            <button class="btn-autoexchange active" id="autoExchangeBtn" title="Auto Exchange" data-tooltip="Auto Exchange">
-              <i class="fas fa-sync-alt"></i>
-            </button>
-            <button class="btn-opacity" id="opacityBtn" title="Opacity: Cycle panel transparency" data-tooltip="Opacity: Cycle panel transparency">
-              <i class="fas fa-adjust"></i>
+            <button class="btn-autoexchange active" id="autoExchangeBtn" title="Auto Convert" data-tooltip="Auto Convert">Auto Convert</button>
+            <button class="btn-settings" id="settingsBtn" title="Settings" data-tooltip="Settings">
+              <i class="fas fa-gear"></i>
             </button>
             <button class="btn-mute" id="muteBtn" title="Sound" data-tooltip="Sound">
               <i class="fas fa-volume-up"></i>
-            </button>
-            <button class="btn-layout" id="layoutBtn" title="Layout: Toggle vertical/horizontal" data-tooltip="Layout: Toggle vertical/horizontal">
-              <i class="fas fa-arrows-alt-h"></i>
-            </button>
-            <button class="btn-reset" id="resetSessionBtn" title="Reset: Clear session stats" data-tooltip="Reset: Clear session stats">
-              <i class="fas fa-rotate-left"></i>
-            </button>
-            <button class="btn-copy" id="copySummaryBtn" title="Copy: Session summary" data-tooltip="Copy: Session summary">
-              <i class="fas fa-copy"></i>
             </button>
             <button class="btn-minimize" id="minimizeBtn" title="Toggle Minimize" data-tooltip="Toggle Minimize">
               <i class="fas fa-minus"></i>
@@ -219,6 +208,62 @@
           </div>
         </div>
       </div>
+    </div>
+  </div>
+
+  <div id="settingsMenu" class="settings-menu" hidden>
+    <div class="settings-menu-header" id="settingsMenuHeader">
+      <span><i class="fas fa-sliders-h"></i> Settings</span>
+      <button class="btn-settings-close" id="settingsCloseBtn" title="Close Settings" data-tooltip="Close Settings" aria-label="Close Settings">
+        <i class="fas fa-xmark"></i>
+      </button>
+    </div>
+    <div class="settings-row">
+      <span class="settings-label">Theme</span>
+      <select id="themeSelect" class="theme-select" title="Theme" data-tooltip="Theme">
+        <option value="steel-core">Steel Core</option>
+        <option value="crimson-night">Crimson Night</option>
+        <option value="emerald-hunt">Emerald Hunt</option>
+        <option value="arcane-violet">Arcane Violet</option>
+        <option value="desert-raider">Desert Raider</option>
+        <option value="neon-cyber">Neon Cyber</option>
+        <option value="frost-ops">Frost Ops</option>
+        <option value="inferno-lava">Inferno Lava</option>
+        <option value="retro-terminal">Retro Terminal</option>
+        <option value="pepsi">Pepsi</option>
+      </select>
+    </div>
+    <div class="settings-row">
+      <span class="settings-label">Reset Session</span>
+      <button class="btn-reset" id="resetSessionBtn" title="Reset: Clear session stats" data-tooltip="Reset: Clear session stats">
+        <i class="fas fa-rotate-left"></i>
+      </button>
+    </div>
+    <div class="settings-row">
+      <span class="settings-label">Copy Summary</span>
+      <button class="btn-copy" id="copySummaryBtn" title="Copy: Session summary" data-tooltip="Copy: Session summary">
+        <i class="fas fa-copy"></i>
+      </button>
+    </div>
+    <div class="settings-row">
+      <span class="settings-label">Opacity</span>
+      <button class="btn-opacity" id="opacityBtn" title="Opacity: Cycle panel transparency" data-tooltip="Opacity: Cycle panel transparency">
+        <i class="fas fa-adjust"></i>
+      </button>
+    </div>
+    <div class="settings-row">
+      <span class="settings-label">Layout</span>
+      <button class="btn-layout" id="layoutBtn" title="Layout: Toggle vertical/horizontal" data-tooltip="Layout: Toggle vertical/horizontal">
+        <i class="fas fa-arrows-alt-h"></i>
+      </button>
+    </div>
+    <div class="settings-row">
+      <span class="settings-label">Show Total BXP</span>
+      <button class="btn-setting-toggle active" id="toggleBxpBtn" title="Total BXP: Visible" data-tooltip="Total BXP: Visible">On</button>
+    </div>
+    <div class="settings-row">
+      <span class="settings-label">Show Performance</span>
+      <button class="btn-setting-toggle active" id="togglePerformanceBtn" title="Performance Metrics: Visible" data-tooltip="Performance Metrics: Visible">On</button>
     </div>
   </div>
 

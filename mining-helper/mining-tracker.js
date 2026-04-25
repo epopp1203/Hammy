@@ -34,6 +34,252 @@ let opacityIndex = parseInt(localStorage.getItem("miningTracker_opacity") || "0"
 
 // Auto-exchange toggle
 let autoExchangeEnabled = localStorage.getItem("miningTracker_autoExchange") !== "false";
+let showBxpCard = localStorage.getItem("miningTracker_showBxp") !== "false";
+let showPerformanceCard = localStorage.getItem("miningTracker_showPerformance") !== "false";
+let activeTheme = localStorage.getItem("miningTracker_theme") || "steel-core";
+
+const THEME_PRESETS = {
+  "steel-core": {
+    "--ui-panel-bg": "rgba(15, 23, 35, 0.95)",
+    "--ui-panel-border": "rgba(255, 255, 255, 0.1)",
+    "--ui-panel-shadow": "0 8px 20px rgba(0, 0, 0, 0.4)",
+    "--ui-header-bg": "rgba(30, 40, 55, 0.8)",
+    "--ui-header-border": "rgba(255, 255, 255, 0.1)",
+    "--ui-text": "#ffffff",
+    "--ui-title": "#e2e8f0",
+    "--ui-muted": "#94a3b8",
+    "--ui-accent": "#60a5fa",
+    "--ui-settings-bg": "rgba(15, 23, 35, 0.98)",
+    "--ui-settings-border": "rgba(125, 167, 219, 0.35)",
+    "--ui-settings-header-bg": "rgba(59, 130, 246, 0.14)",
+    "--ui-settings-header-border": "rgba(59, 130, 246, 0.28)",
+    "--ui-row-bg": "rgba(255, 255, 255, 0.04)",
+    "--ui-row-border": "rgba(255, 255, 255, 0.06)",
+    "--ui-tooltip-bg-start": "rgba(11, 20, 36, 0.98)",
+    "--ui-tooltip-bg-end": "rgba(15, 28, 48, 0.98)",
+    "--ui-tooltip-border": "rgba(125, 167, 219, 0.45)",
+    "--ui-card-bg": "rgba(255, 255, 255, 0.05)",
+    "--ui-card-border": "rgba(255, 255, 255, 0.1)",
+    "--ui-metric-bg": "rgba(16, 185, 129, 0.1)",
+    "--ui-metric-border": "rgba(16, 185, 129, 0.2)"
+  },
+  "crimson-night": {
+    "--ui-panel-bg": "rgba(35, 12, 18, 0.95)",
+    "--ui-panel-border": "rgba(255, 111, 136, 0.28)",
+    "--ui-panel-shadow": "0 8px 22px rgba(80, 11, 28, 0.45)",
+    "--ui-header-bg": "rgba(56, 18, 28, 0.84)",
+    "--ui-header-border": "rgba(255, 111, 136, 0.28)",
+    "--ui-text": "#ffeef2",
+    "--ui-title": "#ffd6df",
+    "--ui-muted": "#d9a5b4",
+    "--ui-accent": "#ff6f88",
+    "--ui-settings-bg": "rgba(32, 11, 19, 0.98)",
+    "--ui-settings-border": "rgba(255, 111, 136, 0.38)",
+    "--ui-settings-header-bg": "rgba(255, 111, 136, 0.16)",
+    "--ui-settings-header-border": "rgba(255, 111, 136, 0.36)",
+    "--ui-row-bg": "rgba(255, 255, 255, 0.03)",
+    "--ui-row-border": "rgba(255, 111, 136, 0.2)",
+    "--ui-tooltip-bg-start": "rgba(40, 9, 18, 0.98)",
+    "--ui-tooltip-bg-end": "rgba(62, 17, 31, 0.98)",
+    "--ui-tooltip-border": "rgba(255, 111, 136, 0.45)",
+    "--ui-card-bg": "rgba(255, 255, 255, 0.04)",
+    "--ui-card-border": "rgba(255, 111, 136, 0.25)",
+    "--ui-metric-bg": "rgba(255, 111, 136, 0.12)",
+    "--ui-metric-border": "rgba(255, 111, 136, 0.22)"
+  },
+  "emerald-hunt": {
+    "--ui-panel-bg": "rgba(11, 28, 22, 0.95)",
+    "--ui-panel-border": "rgba(52, 211, 153, 0.28)",
+    "--ui-panel-shadow": "0 8px 22px rgba(6, 53, 37, 0.4)",
+    "--ui-header-bg": "rgba(16, 46, 34, 0.84)",
+    "--ui-header-border": "rgba(52, 211, 153, 0.28)",
+    "--ui-text": "#ecfdf5",
+    "--ui-title": "#d1fae5",
+    "--ui-muted": "#98d5bb",
+    "--ui-accent": "#34d399",
+    "--ui-settings-bg": "rgba(10, 27, 21, 0.98)",
+    "--ui-settings-border": "rgba(52, 211, 153, 0.36)",
+    "--ui-settings-header-bg": "rgba(52, 211, 153, 0.15)",
+    "--ui-settings-header-border": "rgba(52, 211, 153, 0.34)",
+    "--ui-row-bg": "rgba(255, 255, 255, 0.03)",
+    "--ui-row-border": "rgba(52, 211, 153, 0.2)",
+    "--ui-tooltip-bg-start": "rgba(7, 23, 18, 0.98)",
+    "--ui-tooltip-bg-end": "rgba(13, 38, 28, 0.98)",
+    "--ui-tooltip-border": "rgba(52, 211, 153, 0.45)",
+    "--ui-card-bg": "rgba(255, 255, 255, 0.045)",
+    "--ui-card-border": "rgba(52, 211, 153, 0.2)",
+    "--ui-metric-bg": "rgba(52, 211, 153, 0.12)",
+    "--ui-metric-border": "rgba(52, 211, 153, 0.22)"
+  },
+  "arcane-violet": {
+    "--ui-panel-bg": "rgba(24, 17, 41, 0.95)",
+    "--ui-panel-border": "rgba(167, 139, 250, 0.28)",
+    "--ui-panel-shadow": "0 8px 22px rgba(41, 18, 84, 0.42)",
+    "--ui-header-bg": "rgba(38, 24, 68, 0.84)",
+    "--ui-header-border": "rgba(167, 139, 250, 0.28)",
+    "--ui-text": "#f5f3ff",
+    "--ui-title": "#e9ddff",
+    "--ui-muted": "#bba6df",
+    "--ui-accent": "#a78bfa",
+    "--ui-settings-bg": "rgba(21, 15, 37, 0.98)",
+    "--ui-settings-border": "rgba(167, 139, 250, 0.36)",
+    "--ui-settings-header-bg": "rgba(167, 139, 250, 0.15)",
+    "--ui-settings-header-border": "rgba(167, 139, 250, 0.34)",
+    "--ui-row-bg": "rgba(255, 255, 255, 0.03)",
+    "--ui-row-border": "rgba(167, 139, 250, 0.2)",
+    "--ui-tooltip-bg-start": "rgba(22, 13, 40, 0.98)",
+    "--ui-tooltip-bg-end": "rgba(35, 21, 62, 0.98)",
+    "--ui-tooltip-border": "rgba(167, 139, 250, 0.45)",
+    "--ui-card-bg": "rgba(255, 255, 255, 0.045)",
+    "--ui-card-border": "rgba(167, 139, 250, 0.2)",
+    "--ui-metric-bg": "rgba(167, 139, 250, 0.11)",
+    "--ui-metric-border": "rgba(167, 139, 250, 0.24)"
+  },
+  "desert-raider": {
+    "--ui-panel-bg": "rgba(40, 29, 17, 0.95)",
+    "--ui-panel-border": "rgba(251, 191, 36, 0.28)",
+    "--ui-panel-shadow": "0 8px 22px rgba(77, 48, 10, 0.42)",
+    "--ui-header-bg": "rgba(62, 42, 20, 0.84)",
+    "--ui-header-border": "rgba(251, 191, 36, 0.28)",
+    "--ui-text": "#fff8eb",
+    "--ui-title": "#fdebc8",
+    "--ui-muted": "#d8be8f",
+    "--ui-accent": "#fbbf24",
+    "--ui-settings-bg": "rgba(37, 26, 15, 0.98)",
+    "--ui-settings-border": "rgba(251, 191, 36, 0.36)",
+    "--ui-settings-header-bg": "rgba(251, 191, 36, 0.15)",
+    "--ui-settings-header-border": "rgba(251, 191, 36, 0.33)",
+    "--ui-row-bg": "rgba(255, 255, 255, 0.03)",
+    "--ui-row-border": "rgba(251, 191, 36, 0.2)",
+    "--ui-tooltip-bg-start": "rgba(45, 28, 12, 0.98)",
+    "--ui-tooltip-bg-end": "rgba(67, 44, 16, 0.98)",
+    "--ui-tooltip-border": "rgba(251, 191, 36, 0.45)",
+    "--ui-card-bg": "rgba(255, 255, 255, 0.045)",
+    "--ui-card-border": "rgba(251, 191, 36, 0.2)",
+    "--ui-metric-bg": "rgba(251, 191, 36, 0.11)",
+    "--ui-metric-border": "rgba(251, 191, 36, 0.22)"
+  },
+  "neon-cyber": {
+    "--ui-panel-bg": "rgba(8, 16, 26, 0.95)",
+    "--ui-panel-border": "rgba(45, 212, 191, 0.3)",
+    "--ui-panel-shadow": "0 8px 22px rgba(0, 94, 122, 0.4)",
+    "--ui-header-bg": "rgba(11, 27, 42, 0.84)",
+    "--ui-header-border": "rgba(45, 212, 191, 0.28)",
+    "--ui-text": "#ecfeff",
+    "--ui-title": "#ccfbf1",
+    "--ui-muted": "#93d2cd",
+    "--ui-accent": "#2dd4bf",
+    "--ui-settings-bg": "rgba(8, 17, 27, 0.98)",
+    "--ui-settings-border": "rgba(45, 212, 191, 0.36)",
+    "--ui-settings-header-bg": "rgba(45, 212, 191, 0.16)",
+    "--ui-settings-header-border": "rgba(45, 212, 191, 0.36)",
+    "--ui-row-bg": "rgba(255, 255, 255, 0.03)",
+    "--ui-row-border": "rgba(45, 212, 191, 0.2)",
+    "--ui-tooltip-bg-start": "rgba(5, 16, 25, 0.98)",
+    "--ui-tooltip-bg-end": "rgba(8, 28, 41, 0.98)",
+    "--ui-tooltip-border": "rgba(45, 212, 191, 0.45)",
+    "--ui-card-bg": "rgba(255, 255, 255, 0.045)",
+    "--ui-card-border": "rgba(45, 212, 191, 0.22)",
+    "--ui-metric-bg": "rgba(45, 212, 191, 0.11)",
+    "--ui-metric-border": "rgba(45, 212, 191, 0.24)"
+  },
+  "frost-ops": {
+    "--ui-panel-bg": "rgba(12, 22, 33, 0.95)",
+    "--ui-panel-border": "rgba(125, 211, 252, 0.3)",
+    "--ui-panel-shadow": "0 8px 22px rgba(9, 45, 74, 0.4)",
+    "--ui-header-bg": "rgba(18, 33, 50, 0.84)",
+    "--ui-header-border": "rgba(125, 211, 252, 0.28)",
+    "--ui-text": "#f0f9ff",
+    "--ui-title": "#dff3ff",
+    "--ui-muted": "#9abed3",
+    "--ui-accent": "#7dd3fc",
+    "--ui-settings-bg": "rgba(11, 21, 32, 0.98)",
+    "--ui-settings-border": "rgba(125, 211, 252, 0.36)",
+    "--ui-settings-header-bg": "rgba(125, 211, 252, 0.16)",
+    "--ui-settings-header-border": "rgba(125, 211, 252, 0.34)",
+    "--ui-row-bg": "rgba(255, 255, 255, 0.03)",
+    "--ui-row-border": "rgba(125, 211, 252, 0.2)",
+    "--ui-tooltip-bg-start": "rgba(9, 19, 30, 0.98)",
+    "--ui-tooltip-bg-end": "rgba(14, 28, 42, 0.98)",
+    "--ui-tooltip-border": "rgba(125, 211, 252, 0.45)",
+    "--ui-card-bg": "rgba(255, 255, 255, 0.045)",
+    "--ui-card-border": "rgba(125, 211, 252, 0.2)",
+    "--ui-metric-bg": "rgba(125, 211, 252, 0.11)",
+    "--ui-metric-border": "rgba(125, 211, 252, 0.24)"
+  },
+  "inferno-lava": {
+    "--ui-panel-bg": "rgba(34, 14, 10, 0.95)",
+    "--ui-panel-border": "rgba(251, 146, 60, 0.3)",
+    "--ui-panel-shadow": "0 8px 22px rgba(104, 36, 9, 0.42)",
+    "--ui-header-bg": "rgba(55, 21, 13, 0.84)",
+    "--ui-header-border": "rgba(251, 146, 60, 0.28)",
+    "--ui-text": "#fff5ef",
+    "--ui-title": "#ffe4d5",
+    "--ui-muted": "#d5ac97",
+    "--ui-accent": "#fb923c",
+    "--ui-settings-bg": "rgba(31, 13, 9, 0.98)",
+    "--ui-settings-border": "rgba(251, 146, 60, 0.36)",
+    "--ui-settings-header-bg": "rgba(251, 146, 60, 0.15)",
+    "--ui-settings-header-border": "rgba(251, 146, 60, 0.33)",
+    "--ui-row-bg": "rgba(255, 255, 255, 0.03)",
+    "--ui-row-border": "rgba(251, 146, 60, 0.2)",
+    "--ui-tooltip-bg-start": "rgba(38, 12, 7, 0.98)",
+    "--ui-tooltip-bg-end": "rgba(57, 19, 10, 0.98)",
+    "--ui-tooltip-border": "rgba(251, 146, 60, 0.45)",
+    "--ui-card-bg": "rgba(255, 255, 255, 0.045)",
+    "--ui-card-border": "rgba(251, 146, 60, 0.2)",
+    "--ui-metric-bg": "rgba(251, 146, 60, 0.11)",
+    "--ui-metric-border": "rgba(251, 146, 60, 0.24)"
+  },
+  "retro-terminal": {
+    "--ui-panel-bg": "rgba(7, 18, 12, 0.95)",
+    "--ui-panel-border": "rgba(74, 222, 128, 0.3)",
+    "--ui-panel-shadow": "0 8px 22px rgba(8, 56, 26, 0.42)",
+    "--ui-header-bg": "rgba(10, 28, 17, 0.84)",
+    "--ui-header-border": "rgba(74, 222, 128, 0.28)",
+    "--ui-text": "#ecfdf3",
+    "--ui-title": "#d2f8e1",
+    "--ui-muted": "#9dc8ab",
+    "--ui-accent": "#4ade80",
+    "--ui-settings-bg": "rgba(7, 17, 11, 0.98)",
+    "--ui-settings-border": "rgba(74, 222, 128, 0.36)",
+    "--ui-settings-header-bg": "rgba(74, 222, 128, 0.14)",
+    "--ui-settings-header-border": "rgba(74, 222, 128, 0.32)",
+    "--ui-row-bg": "rgba(255, 255, 255, 0.025)",
+    "--ui-row-border": "rgba(74, 222, 128, 0.2)",
+    "--ui-tooltip-bg-start": "rgba(8, 18, 12, 0.98)",
+    "--ui-tooltip-bg-end": "rgba(11, 26, 17, 0.98)",
+    "--ui-tooltip-border": "rgba(74, 222, 128, 0.45)",
+    "--ui-card-bg": "rgba(255, 255, 255, 0.04)",
+    "--ui-card-border": "rgba(74, 222, 128, 0.22)",
+    "--ui-metric-bg": "rgba(74, 222, 128, 0.11)",
+    "--ui-metric-border": "rgba(74, 222, 128, 0.24)"
+  },
+  "pepsi": {
+    "--ui-panel-bg": "rgba(10, 20, 43, 0.95)",
+    "--ui-panel-border": "rgba(250, 250, 255, 0.2)",
+    "--ui-panel-shadow": "0 8px 24px rgba(6, 21, 68, 0.45)",
+    "--ui-header-bg": "rgba(0, 39, 106, 0.85)",
+    "--ui-header-border": "rgba(245, 67, 112, 0.4)",
+    "--ui-text": "#f8fbff",
+    "--ui-title": "#ffffff",
+    "--ui-muted": "#b8cae6",
+    "--ui-accent": "#f54370",
+    "--ui-settings-bg": "rgba(12, 28, 58, 0.98)",
+    "--ui-settings-border": "rgba(255, 255, 255, 0.3)",
+    "--ui-settings-header-bg": "rgba(245, 67, 112, 0.18)",
+    "--ui-settings-header-border": "rgba(245, 67, 112, 0.38)",
+    "--ui-row-bg": "rgba(255, 255, 255, 0.05)",
+    "--ui-row-border": "rgba(255, 255, 255, 0.16)",
+    "--ui-tooltip-bg-start": "rgba(11, 31, 75, 0.98)",
+    "--ui-tooltip-bg-end": "rgba(0, 57, 151, 0.98)",
+    "--ui-tooltip-border": "rgba(245, 67, 112, 0.55)",
+    "--ui-card-bg": "rgba(255, 255, 255, 0.055)",
+    "--ui-card-border": "rgba(255, 255, 255, 0.18)",
+    "--ui-metric-bg": "rgba(245, 67, 112, 0.12)",
+    "--ui-metric-border": "rgba(245, 67, 112, 0.24)"
+  }
+};
 
 // Inventory ETA
 const weightHistory = [];
@@ -48,6 +294,10 @@ let lastDataUpdateAt = 0;
 let dataHealthTimerId = null;
 const DATA_DELAYED_MS = 5000;
 const DATA_STALE_MS = 15000;
+const ORE_IDLE_TIMEOUT_MS = 10000;
+let lastOreGainAt = null;
+let lastCopperAmount = null;
+let lastIronAmount = null;
 
 // NEW: one-shot initial request + capped retry
 let hasRequestedInitialData = false;
@@ -73,6 +323,11 @@ let dragStartX = 0;
 let dragStartY = 0;
 let windowStartX = 0;
 let windowStartY = 0;
+let isSettingsDragging = false;
+let settingsDragStartX = 0;
+let settingsDragStartY = 0;
+let settingsWindowStartX = 0;
+let settingsWindowStartY = 0;
 
 function coerceMenuOpen(value) {
   if (typeof value === "boolean") return value;
@@ -112,6 +367,74 @@ function parseInventoryValue(rawValue) {
   return null;
 }
 
+function hexToRgba(hex, alpha) {
+  if (typeof hex !== "string") return `rgba(59, 130, 246, ${alpha})`;
+  const normalized = hex.trim();
+  const shortMatch = normalized.match(/^#([0-9a-fA-F]{3})$/);
+  const longMatch = normalized.match(/^#([0-9a-fA-F]{6})$/);
+
+  let r = 59;
+  let g = 130;
+  let b = 246;
+
+  if (shortMatch) {
+    const triplet = shortMatch[1];
+    r = parseInt(triplet[0] + triplet[0], 16);
+    g = parseInt(triplet[1] + triplet[1], 16);
+    b = parseInt(triplet[2] + triplet[2], 16);
+  } else if (longMatch) {
+    const value = longMatch[1];
+    r = parseInt(value.slice(0, 2), 16);
+    g = parseInt(value.slice(2, 4), 16);
+    b = parseInt(value.slice(4, 6), 16);
+  }
+
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
+function applyTheme(themeKey) {
+  const selected = THEME_PRESETS[themeKey] ? themeKey : "steel-core";
+  const theme = THEME_PRESETS[selected];
+  const root = document.documentElement;
+
+  for (const [varName, value] of Object.entries(theme)) {
+    root.style.setProperty(varName, value);
+  }
+
+  const accent = theme["--ui-accent"] || "#3b82f6";
+  root.style.setProperty("--ui-bxp-accent", accent);
+  root.style.setProperty("--ui-bxp-bg", hexToRgba(accent, 0.12));
+  root.style.setProperty("--ui-bxp-border", hexToRgba(accent, 0.24));
+  root.style.setProperty("--ui-inventory-bg", hexToRgba(accent, 0.12));
+  root.style.setProperty("--ui-inventory-border", hexToRgba(accent, 0.24));
+  root.style.setProperty("--ui-inventory-title", accent);
+  root.style.setProperty("--ui-status-text", theme["--ui-title"] || "#e2e8f0");
+  root.style.setProperty("--ui-status-bg", hexToRgba(accent, 0.2));
+
+  activeTheme = selected;
+  localStorage.setItem("miningTracker_theme", selected);
+
+  const selectEl = document.getElementById("themeSelect");
+  if (selectEl && selectEl.value !== selected) {
+    selectEl.value = selected;
+  }
+}
+
+function initializeThemeSelector() {
+  const selectEl = document.getElementById("themeSelect");
+  if (!selectEl) {
+    applyTheme(activeTheme);
+    return;
+  }
+
+  selectEl.value = THEME_PRESETS[activeTheme] ? activeTheme : "steel-core";
+  applyTheme(selectEl.value);
+
+  selectEl.addEventListener("change", (event) => {
+    applyTheme(event.target.value);
+  });
+}
+
 function initializeDragging() {
   const draggableWindow = document.getElementById("draggableWindow");
   const header = document.querySelector(".dashboard-header");
@@ -148,6 +471,7 @@ function initializeDragging() {
 function toggleMinimize() {
   const container = document.getElementById("draggableWindow");
   isMinimized = !isMinimized;
+  closeSettingsMenu();
   
   if (isMinimized) {
     container.classList.add("minimized");
@@ -197,6 +521,9 @@ function getSavedLayout() {
 }
 
 function startDragging(e) {
+  if (e.button !== 0) return;
+  if (e.target.closest(".header-actions, button, select, input, .settings-menu")) return;
+
   isDragging = true;
   const draggableWindow = document.getElementById("draggableWindow");
   
@@ -219,15 +546,9 @@ function drag(e) {
   
   const newX = windowStartX + deltaX;
   const newY = windowStartY + deltaY;
-  
-  const maxX = window.innerWidth - draggableWindow.offsetWidth;
-  const maxY = window.innerHeight - draggableWindow.offsetHeight;
-  
-  const boundedX = Math.max(0, Math.min(newX, maxX));
-  const boundedY = Math.max(0, Math.min(newY, maxY));
-  
-  draggableWindow.style.left = boundedX + "px";
-  draggableWindow.style.top = boundedY + "px";
+
+  draggableWindow.style.left = newX + "px";
+  draggableWindow.style.top = newY + "px";
 }
 
 function stopDragging() {
@@ -258,8 +579,76 @@ function getSavedPosition() {
   }
 }
 
+function saveSettingsPosition() {
+  const settingsMenu = document.getElementById("settingsMenu");
+  if (!settingsMenu) return;
+  const rect = settingsMenu.getBoundingClientRect();
+  const position = {
+    x: rect.left,
+    y: rect.top
+  };
+  localStorage.setItem("miningTracker_settingsPosition", JSON.stringify(position));
+}
+
+function getSavedSettingsPosition() {
+  try {
+    const saved = localStorage.getItem("miningTracker_settingsPosition");
+    if (!saved) return null;
+    const parsed = JSON.parse(saved);
+    if (!parsed || typeof parsed.x !== "number" || typeof parsed.y !== "number") return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+function startSettingsDragging(e) {
+  if (e.button !== 0) return;
+  if (!e.target.closest("#settingsMenuHeader")) return;
+  if (e.target.closest("button, select, input")) return;
+  const settingsMenu = document.getElementById("settingsMenu");
+  if (!settingsMenu) return;
+
+  isSettingsDragging = true;
+  settingsDragStartX = e.clientX;
+  settingsDragStartY = e.clientY;
+
+  const rect = settingsMenu.getBoundingClientRect();
+  settingsWindowStartX = rect.left;
+  settingsWindowStartY = rect.top;
+
+  e.preventDefault();
+}
+
+function dragSettings(e) {
+  if (!isSettingsDragging) return;
+
+  const settingsMenu = document.getElementById("settingsMenu");
+  if (!settingsMenu) return;
+
+  const deltaX = e.clientX - settingsDragStartX;
+  const deltaY = e.clientY - settingsDragStartY;
+
+  const newX = settingsWindowStartX + deltaX;
+  const newY = settingsWindowStartY + deltaY;
+
+  settingsMenu.style.left = newX + "px";
+  settingsMenu.style.top = newY + "px";
+}
+
+function stopSettingsDragging() {
+  if (!isSettingsDragging) return;
+  isSettingsDragging = false;
+  saveSettingsPosition();
+}
+
 function toggleUI(visible) {
   document.getElementById("draggableWindow").style.display = visible ? "block" : "none";
+  if (!visible) {
+    closeSettingsMenu();
+    const container = document.getElementById("draggableWindow");
+    if (container) container.classList.remove("ore-idle-alert");
+  }
   if (visible && !sessionStartTime) {
     sessionStartTime = Date.now();
     startSessionTimer();
@@ -563,6 +952,8 @@ function updateDataHealthStatus() {
       ? "Data Health: no update recently, data may be stale"
       : "Data Health: waiting for initial data";
   }
+
+  updateOreInactivityAlert();
 }
 
 function startDataHealthMonitor() {
@@ -647,13 +1038,221 @@ function updateAutoExchangeUI() {
   if (!btn) return;
   if (autoExchangeEnabled) {
     btn.classList.add("active");
-    btn.title = "Auto On";
-    btn.setAttribute("data-tooltip", "Auto On");
+    btn.textContent = "Auto Convert";
+    btn.title = "Auto Convert";
+    btn.setAttribute("data-tooltip", "Auto Convert");
   } else {
     btn.classList.remove("active");
-    btn.title = "Auto Off";
-    btn.setAttribute("data-tooltip", "Auto Off");
+    btn.textContent = "Convert Off";
+    btn.title = "Convert Off";
+    btn.setAttribute("data-tooltip", "Convert Off");
   }
+}
+
+function initializeSettingsMenu() {
+  const settingsBtn = document.getElementById("settingsBtn");
+  const settingsMenu = document.getElementById("settingsMenu");
+  const settingsMenuHeader = document.getElementById("settingsMenuHeader");
+  const settingsCloseBtn = document.getElementById("settingsCloseBtn");
+  if (!settingsBtn || !settingsMenu) return;
+
+  const positionIsVisible = (x, y) => {
+    const width = settingsMenu.offsetWidth || 218;
+    const height = settingsMenu.offsetHeight || 220;
+    const minVisible = 40;
+    return (
+      x + minVisible < window.innerWidth &&
+      y + minVisible < window.innerHeight &&
+      x + width - minVisible > 0 &&
+      y + height - minVisible > 0
+    );
+  };
+
+  const openSettingsMenu = () => {
+    const savedPosition = getSavedSettingsPosition();
+    if (savedPosition && positionIsVisible(savedPosition.x, savedPosition.y)) {
+      settingsMenu.style.left = savedPosition.x + "px";
+      settingsMenu.style.top = savedPosition.y + "px";
+    } else {
+      const buttonRect = settingsBtn.getBoundingClientRect();
+      settingsMenu.style.left = Math.round(buttonRect.left) + "px";
+      settingsMenu.style.top = Math.round(buttonRect.bottom + 8) + "px";
+    }
+    settingsMenu.hidden = false;
+    settingsBtn.classList.add("active");
+  };
+
+  const toggleSettingsMenu = () => {
+    if (settingsMenu.hidden) {
+      openSettingsMenu();
+    } else {
+      closeSettingsMenu();
+    }
+  };
+
+  settingsBtn.onmousedown = null;
+  settingsBtn.onclick = null;
+
+  // Capture phase ensures this runs before header drag handlers.
+  document.addEventListener("mousedown", (event) => {
+    if (event.button !== 0) return;
+    if (!event.target.closest("#settingsBtn")) return;
+    event.preventDefault();
+    event.stopPropagation();
+    if (event.stopImmediatePropagation) event.stopImmediatePropagation();
+    toggleSettingsMenu();
+  }, true);
+
+  settingsMenu.addEventListener("click", (event) => {
+    event.stopPropagation();
+  });
+
+  if (settingsMenuHeader) {
+    settingsMenuHeader.addEventListener("mousedown", startSettingsDragging);
+  }
+
+  if (settingsCloseBtn) {
+    settingsCloseBtn.addEventListener("mousedown", (event) => {
+      if (event.button !== 0) return;
+      event.preventDefault();
+      event.stopPropagation();
+      closeSettingsMenu();
+    });
+  }
+
+  document.addEventListener("mousemove", dragSettings);
+  document.addEventListener("mouseup", stopSettingsDragging);
+
+  document.addEventListener("mousedown", (event) => {
+    if (isSettingsDragging || settingsMenu.hidden) return;
+    if (event.target.closest("#settingsMenu") || event.target.closest("#settingsBtn")) return;
+    closeSettingsMenu();
+  });
+}
+
+function closeSettingsMenu() {
+  const settingsBtn = document.getElementById("settingsBtn");
+  const settingsMenu = document.getElementById("settingsMenu");
+  if (!settingsMenu || settingsMenu.hidden) return;
+  settingsMenu.hidden = true;
+  if (settingsBtn) settingsBtn.classList.remove("active");
+}
+
+function initializeBxpToggle() {
+  const bxpToggleBtn = document.getElementById("toggleBxpBtn");
+  if (!bxpToggleBtn) return;
+
+  updateBxpVisibility();
+
+  bxpToggleBtn.addEventListener("click", () => {
+    showBxpCard = !showBxpCard;
+    localStorage.setItem("miningTracker_showBxp", showBxpCard);
+    updateBxpVisibility();
+  });
+}
+
+function updateBxpVisibility() {
+  const bxpSection = document.querySelector(".bxp-section");
+  const bxpToggleBtn = document.getElementById("toggleBxpBtn");
+
+  if (bxpSection) {
+    bxpSection.style.display = showBxpCard ? "" : "none";
+  }
+
+  if (!bxpToggleBtn) return;
+
+  if (showBxpCard) {
+    bxpToggleBtn.classList.add("active");
+    bxpToggleBtn.textContent = "On";
+    bxpToggleBtn.title = "Total BXP: Visible";
+    bxpToggleBtn.setAttribute("data-tooltip", "Total BXP: Visible");
+  } else {
+    bxpToggleBtn.classList.remove("active");
+    bxpToggleBtn.textContent = "Off";
+    bxpToggleBtn.title = "Total BXP: Hidden";
+    bxpToggleBtn.setAttribute("data-tooltip", "Total BXP: Hidden");
+  }
+}
+
+function initializePerformanceToggle() {
+  const performanceToggleBtn = document.getElementById("togglePerformanceBtn");
+  if (!performanceToggleBtn) return;
+
+  updatePerformanceVisibility();
+
+  performanceToggleBtn.addEventListener("click", () => {
+    showPerformanceCard = !showPerformanceCard;
+    localStorage.setItem("miningTracker_showPerformance", showPerformanceCard);
+    updatePerformanceVisibility();
+  });
+}
+
+function updatePerformanceVisibility() {
+  const performanceSection = document.querySelector(".performance-section");
+  const performanceToggleBtn = document.getElementById("togglePerformanceBtn");
+
+  if (performanceSection) {
+    performanceSection.style.display = showPerformanceCard ? "" : "none";
+  }
+
+  if (!performanceToggleBtn) return;
+
+  if (showPerformanceCard) {
+    performanceToggleBtn.classList.add("active");
+    performanceToggleBtn.textContent = "On";
+    performanceToggleBtn.title = "Performance Metrics: Visible";
+    performanceToggleBtn.setAttribute("data-tooltip", "Performance Metrics: Visible");
+  } else {
+    performanceToggleBtn.classList.remove("active");
+    performanceToggleBtn.textContent = "Off";
+    performanceToggleBtn.title = "Performance Metrics: Hidden";
+    performanceToggleBtn.setAttribute("data-tooltip", "Performance Metrics: Hidden");
+  }
+}
+
+function trackOreGain(invObj) {
+  if (!invObj) return;
+  const copperAmount = invObj["mining_copper"]?.amount ?? 0;
+  const ironAmount = invObj["mining_iron"]?.amount ?? 0;
+
+  if (lastCopperAmount === null || lastIronAmount === null) {
+    lastCopperAmount = copperAmount;
+    lastIronAmount = ironAmount;
+    lastOreGainAt = Date.now();
+    return;
+  }
+
+  if (copperAmount > lastCopperAmount || ironAmount > lastIronAmount) {
+    lastOreGainAt = Date.now();
+  }
+
+  lastCopperAmount = copperAmount;
+  lastIronAmount = ironAmount;
+}
+
+function isVoucherConversionActive() {
+  if (isExchanging) return true;
+  if (!window.state.cache.menu_open) return false;
+  const choices = window.state.cache.menu_choices ?? [];
+  return choices.some(choice => choice?.[0]?.includes("Exchange "));
+}
+
+function updateOreInactivityAlert() {
+  const container = document.getElementById("draggableWindow");
+  if (!container) return;
+
+  if (!hasInitialized || !isMinerJob || !lastInventoryObj || !lastOreGainAt) {
+    container.classList.remove("ore-idle-alert");
+    return;
+  }
+
+  if (isVoucherConversionActive()) {
+    container.classList.remove("ore-idle-alert");
+    return;
+  }
+
+  const shouldFlash = Date.now() - lastOreGainAt >= ORE_IDLE_TIMEOUT_MS;
+  container.classList.toggle("ore-idle-alert", shouldFlash);
 }
 
 function initializeOpacityBtn() {
@@ -1042,9 +1641,31 @@ window.addEventListener("message", (event) => {
       : envelope;
   if (!data || typeof data !== 'object') return;
 
-  lastDataUpdateAt = Date.now();
+  const hasTrackerFields = (
+    Object.prototype.hasOwnProperty.call(data, "inventory") ||
+    Object.prototype.hasOwnProperty.call(data, "weight") ||
+    Object.prototype.hasOwnProperty.call(data, "max_weight") ||
+    Object.prototype.hasOwnProperty.call(data, "menu_open") ||
+    Object.prototype.hasOwnProperty.call(data, "menu_choices") ||
+    (data.cache && typeof data.cache === "object" && Object.prototype.hasOwnProperty.call(data.cache, "inventory"))
+  );
 
-  if (!hasInitialized) {
+  const hasJobField = (
+    Object.prototype.hasOwnProperty.call(data, "job") ||
+    Object.prototype.hasOwnProperty.call(data, "job_name") ||
+    Object.prototype.hasOwnProperty.call(data, "job_title") ||
+    Object.prototype.hasOwnProperty.call(data, "jobName") ||
+    Object.prototype.hasOwnProperty.call(data, "jobTitle")
+  );
+
+  // Ignore unrelated object messages from other UI systems.
+  if (!hasTrackerFields && !hasJobField) return;
+
+  if (hasTrackerFields) {
+    lastDataUpdateAt = Date.now();
+  }
+
+  if (!hasInitialized && hasTrackerFields) {
     hasInitialized = true;
     clearTimeout(initialDataRetryTimer);
     clearTimeout(waitingStateTimer);
@@ -1081,6 +1702,10 @@ window.addEventListener("message", (event) => {
   const normalizedJob = typeof rawJob === "string" ? rawJob.trim().toLowerCase() : "";
   if (normalizedJob) {
     if (!normalizedJob.includes(REQUIRED_JOB)) {
+      // Ambiguous job-only payloads can come from other UIs; don't let them hide this panel.
+      if (!hasTrackerFields && !isMinerJob) {
+        return;
+      }
       isMinerJob = false;
       toggleUI(false);
       return;
@@ -1101,6 +1726,7 @@ window.addEventListener("message", (event) => {
 
   if (invObj) {
     lastInventoryObj = invObj;
+    trackOreGain(invObj);
   } else if (lastInventoryObj) {
     invObj = lastInventoryObj;
   }
@@ -1163,7 +1789,15 @@ window.onload = () => {
 
   initializeAlertSettings();
 
+  initializeSettingsMenu();
+
+  initializeThemeSelector();
+
   initializeAutoExchangeBtn();
+
+  initializeBxpToggle();
+
+  initializePerformanceToggle();
 
   initializeOpacityBtn();
 
@@ -1176,6 +1810,8 @@ window.onload = () => {
   const escapeListener = (e) => {
 
     if (e.key === "Escape") {
+
+      closeSettingsMenu();
 
       window.parent.postMessage({type: "pin"}, "*");
 
